@@ -65,6 +65,31 @@
 
 ## 🚀 安装
 
+### GitHub Actions 编译 APK
+
+仓库提供 `.github/workflows/release-openwrt.yml`。推送代码后，在 GitHub
+**Actions → Release OpenWrt packages → Run workflow** 中填写发布标签，
+例如 `v1.1.6-apk.1`，并选择是否标记为预发布。
+
+流水线使用 OpenWrt 25.12.5 SDK，分别编译 `x86_64`、`aarch64_cortex-a53`、
+`aarch64_cortex-a72`、`aarch64_generic`、`arm_cortex-a7` 和 `arm_cortex-a9`。
+每种架构上传以下三个 APK 和 SHA256 校验文件到 Actions artifacts；全部成功后发布到 GitHub Release：
+
+- `picoclaw`：PicoClaw 0.3.1 核心及 procd 服务，不包含 launcher。
+- `luci-app-picoclaw`：LuCI 管理界面及三个 OpenWrt 预设技能，依赖 `picoclaw`。
+- `luci-i18n-picoclaw-zh-cn`：LuCI 简体中文语言包。
+
+发布文件名附带 SDK 版本和架构，避免不同构建相互覆盖。安装时选择与你的固件匹配的架构，
+下载同一组的三个 APK，然后在路由器上执行：
+
+```sh
+apk add --allow-untrusted ./picoclaw-*.apk ./luci-app-picoclaw-*.apk ./luci-i18n-picoclaw-zh-cn-*.apk
+```
+
+PicoClaw 源码版本与 SHA256 固定在 `picoclaw/Makefile`；升级时必须同时更新版本和校验值。
+LuCI 源码包位于 `istore/luci-app-picoclaw`，中文翻译位于其 `po/zh_Hans` 目录。
+将本仓库加入 `feeds.conf.default` 后，也可选择 `luci-app-picoclaw` 随固件构建，依赖会带入核心包。
+
 ### 第一步：安装 PicoClaw 主程序
 
 PicoClaw 是 AI 助手的核心程序，需要先装好它。通过 SSH 登录路由器，执行：

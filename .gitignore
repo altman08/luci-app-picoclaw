@@ -3,7 +3,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.ipk
+*.apk
 *.bak
 *.log
 release/
 istore/openwrt-app-actions/
+artifacts/

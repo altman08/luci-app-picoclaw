@@ -1,191 +1,115 @@
 #!/bin/sh
-# ============================================
-# luci-app-picoclaw APK Builder for OpenWrt 25.xx
-# Run this script ON your OpenWrt 25.x router
-# ============================================
-#
-# Usage:
-#   chmod +x build-apk.sh
-#   ./build-apk.sh
-#
-# Output: luci-app-picoclaw_25.xx_all.apk
+# Build the LuCI frontend as a real APKv3 package for OpenWrt 25.xx.
+# Requires apk-tools with the mkpkg applet (on the host or the router).
+# Usage: APK=/path/to/apk ./scripts/build-apk-25xx.sh [output-directory]
+# Inputs (relative to the repository root):
+#   istore/luci-app-picoclaw/luasrc/controller/picoclaw.lua
+#   istore/luci-app-picoclaw/luasrc/view/picoclaw/main.htm
+#   scripts/picoclaw.init
+# Default output directory: release/
+# Standalone frontend package: includes init.d, but no core binary or skills.
+# Install /usr/bin/picoclaw separately. Do not combine this package with a
+# core package that also owns /etc/init.d/picoclaw.
 
-set -e
+set -eu
+umask 022
 
 PKG_NAME="luci-app-picoclaw"
-PKG_VERSION="1.1.6"
+PKG_VERSION="${PKG_VERSION:-1.1.6-r4}"
 PKG_DESC="LuCI management interface for PicoClaw AI assistant"
 PKG_MAINTAINER="GennKann"
-PKG_ARCH="all"
-OUTPUT_FILE="${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}.apk"
-BUILD_DIR="/tmp/${PKG_NAME}-build"
+APK="${APK:-apk}"
 
-echo "=== Building ${PKG_NAME} APK for OpenWrt 25.xx ==="
-echo ""
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+REPO_DIR="$(dirname -- "$SCRIPT_DIR")"
+PACKAGE_DIR="$REPO_DIR/istore/$PKG_NAME"
+OUTPUT_DIR="${1:-$REPO_DIR/release}"
+OUTPUT_FILE="$PKG_NAME-$PKG_VERSION.apk"
 
-# Check if running on OpenWrt 25 with apk
-if command -v apk >/dev/null 2>&1; then
-    echo "[OK] apk-tools found"
-    PKG_MANAGER="apk"
-elif command -v opkg >/dev/null 2>&1; then
-    echo "[WARN] opkg detected. This script is for OpenWrt 25+ (apk)."
-    echo "       Use the IPK package or install script for OpenWrt 24.10."
-    exit 1
-else
-    echo "[ERROR] Neither apk nor opkg found. Are you on OpenWrt?"
+if [ "$#" -gt 1 ]; then
+    printf 'Usage: %s [output-directory]\n' "$0" >&2
     exit 1
 fi
 
-# Clean up
-rm -rf "${BUILD_DIR}"
-mkdir -p "${BUILD_DIR}/pkg"
-
-# --- Install files ---
-echo "[1/5] Installing files..."
-
-# LuCI Controller — copy from repo source
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
-mkdir -p "${BUILD_DIR}/pkg/usr/lib/lua/luci/controller"
-if [ -f "${REPO_DIR}/luci/controller/picoclaw.lua" ]; then
-    cp "${REPO_DIR}/luci/controller/picoclaw.lua" "${BUILD_DIR}/pkg/usr/lib/lua/luci/controller/picoclaw.lua"
-    echo "  -> controller/picoclaw.lua (copied from repo)"
-else
-    echo "  [WARN] luci/controller/picoclaw.lua not found, skipping"
+if ! command -v "$APK" >/dev/null 2>&1; then
+    printf 'Error: apk-tools not found. Set APK to an apk-tools executable.\n' >&2
+    exit 1
 fi
+# Some static apk-tools builds omit help; let the actual mkpkg invocation
+# validate applet support instead of treating missing help as missing mkpkg.
 
-# LuCI View Template — copy from repo source
-mkdir -p "${BUILD_DIR}/pkg/usr/lib/lua/luci/view/picoclaw"
-if [ -f "${REPO_DIR}/luci/view/picoclaw/main.htm" ]; then
-    cp "${REPO_DIR}/luci/view/picoclaw/main.htm" "${BUILD_DIR}/pkg/usr/lib/lua/luci/view/picoclaw/main.htm"
-    echo "  -> view/picoclaw/main.htm (copied from repo)"
-else
-    echo "  [WARN] luci/view/picoclaw/main.htm not found, skipping"
-fi
-
-# init.d service script
-mkdir -p "${BUILD_DIR}/pkg/etc/init.d"
-cat > "${BUILD_DIR}/pkg/etc/init.d/picoclaw" << 'INITD'
-#!/bin/sh /etc/rc.common
-### BEGIN INIT INFO
-# Provides:          picoclaw
-# Required-Start:    $network
-# Required-Stop:     $network
-# Default-Start:     99
-# Default-Stop:      10
-# Short-Description: PicoClaw AI Gateway
-# Description:       Start PicoClaw as a procd managed service
-### END INIT INFO
-
-START=99
-STOP=10
-USE_PROCD=1
-
-start_service() {
-    procd_open_instance picoclaw
-    procd_set_param command /usr/bin/picoclaw gateway
-    procd_set_param env HOME=/root
-    procd_set_param respawn 3600 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_set_param user root
-    procd_close_instance
-}
-
-stop_service() {
-    # First try graceful shutdown via procd
-    killall picoclaw 2>/dev/null
-    sleep 1
-    # Force kill if still alive (procd may respawn)
-    if [ -n "$(pidof picoclaw)" ]; then
-        kill -9 $(pidof picoclaw) 2>/dev/null
-        sleep 1
+for source in \
+    "$PACKAGE_DIR/luasrc/controller/picoclaw.lua" \
+    "$PACKAGE_DIR/luasrc/view/picoclaw/main.htm" \
+    "$SCRIPT_DIR/picoclaw.init"
+do
+    if [ ! -f "$source" ]; then
+        printf 'Error: required source file is missing: %s\n' "$source" >&2
+        exit 1
     fi
-    # Final cleanup: ensure no zombie processes
-    sleep 1
-}
+done
 
-service_triggers() {
-    procd_add_reload_trigger "picoclaw"
-}
-INITD
-chmod 755 "${BUILD_DIR}/pkg/etc/init.d/picoclaw"
-echo "  -> etc/init.d/picoclaw"
+BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/$PKG_NAME-apk.XXXXXX")"
+trap 'rm -rf "$BUILD_DIR"' 0
+trap 'exit 1' HUP INT TERM
+PKG_ROOT="$BUILD_DIR/pkg"
 
-# --- Build APK package ---
-echo "[2/5] Building APK package..."
+printf 'Building %s %s (noarch)...\n' "$PKG_NAME" "$PKG_VERSION"
+# Use an explicit file list so optional root files and skills are not bundled.
+mkdir -p "$PKG_ROOT/usr/lib/lua/luci/controller" \
+    "$PKG_ROOT/usr/lib/lua/luci/view/picoclaw" \
+    "$PKG_ROOT/etc/init.d" "$PKG_ROOT/lib/apk/packages"
+cp "$PACKAGE_DIR/luasrc/controller/picoclaw.lua" \
+    "$PKG_ROOT/usr/lib/lua/luci/controller/picoclaw.lua"
+cp "$PACKAGE_DIR/luasrc/view/picoclaw/main.htm" \
+    "$PKG_ROOT/usr/lib/lua/luci/view/picoclaw/main.htm"
+cp "$SCRIPT_DIR/picoclaw.init" "$PKG_ROOT/etc/init.d/picoclaw"
+find "$PKG_ROOT" -type d -exec chmod 0755 {} +
+find "$PKG_ROOT" -type f -exec chmod 0644 {} +
+chmod 0755 "$PKG_ROOT/etc/init.d/picoclaw"
 
-# Use apk-tools to create the package
-# APK package format for OpenWrt 25 uses the apk-tools mkpkg command
-cd "${BUILD_DIR}"
+# Match OpenWrt's installed-file manifest convention for APK packages.
+touch "$PKG_ROOT/lib/apk/packages/$PKG_NAME.list"
+(
+    cd "$PKG_ROOT"
+    find . -type f -print | LC_ALL=C sort | sed 's|^\./|/|'
+) > "$BUILD_DIR/files.list"
+mv "$BUILD_DIR/files.list" "$PKG_ROOT/lib/apk/packages/$PKG_NAME.list"
 
-# Create the APK package using apk-tools
-# The .PKGINFO file contains package metadata
-mkdir -p pkg/.PKGINFO
-cat > pkg/.PKGINFO/pkginfo << PKGINFO
-# Generated by luci-app-picoclaw build script
-pkgname = ${PKG_NAME}
-pkgver = ${PKG_VERSION}
-pkgdesc = ${PKG_DESC}
-url = https://github.com/sipeed/picoclaw
-builddate = $(date +%s)
-packager = ${PKG_MAINTAINER}
-size = $(du -sb pkg | cut -f1)
-arch = ${PKG_ARCH}
-origin = ${PKG_NAME}
-license = MIT
-depend = luci
-depend = picoclaw
-datahash = $(find pkg -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1)
-PKGINFO
-echo "  -> .PKGINFO/pkginfo"
-
-# Try to use apk-tools mkpkg if available
-if command -v apk >/dev/null 2>&1; then
-    if apk mkpkg --help >/dev/null 2>&1; then
-        echo "[3/5] Using apk mkpkg..."
-        cd "${BUILD_DIR}/pkg"
-        apk mkpkg -o "/tmp/${OUTPUT_FILE}" 2>/dev/null || true
-        if [ -f "/tmp/${OUTPUT_FILE}" ]; then
-            echo "[4/5] APK created successfully!"
-            cp "/tmp/${OUTPUT_FILE}" "/root/${OUTPUT_FILE}" 2>/dev/null || \
-            cp "/tmp/${OUTPUT_FILE}" "$(pwd)/${OUTPUT_FILE}"
-            echo "[5/5] Package saved to: /root/${OUTPUT_FILE}"
-            echo ""
-            echo "Install with:"
-            echo "  apk add --allow-untrusted /root/${OUTPUT_FILE}"
-            rm -rf "${BUILD_DIR}"
-            exit 0
-        fi
-    fi
+cat > "$BUILD_DIR/post-install" << 'POSTINST'
+#!/bin/sh
+# Do not reload services when installing into an offline firmware root.
+[ -n "${IPKG_INSTROOT:-}" ] && exit 0
+rm -f /tmp/luci-indexcache.*
+rm -rf /tmp/luci-modulecache/
+if [ -x /etc/init.d/rpcd ]; then
+    /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 fi
+exit 0
+POSTINST
+chmod 0755 "$BUILD_DIR/post-install"
 
-# Fallback: create a simple tar.gz based APK (compatible structure)
-echo "[3/5] Using fallback tar-based APK build..."
-cd "${BUILD_DIR}"
-tar czf "/tmp/${OUTPUT_FILE}" -C pkg .
-if [ -f "/tmp/${OUTPUT_FILE}" ]; then
-    echo "[4/5] Package archive created!"
-    
-    # Copy to accessible location
-    cp "/tmp/${OUTPUT_FILE}" "/root/${OUTPUT_FILE}" 2>/dev/null || \
-    cp "/tmp/${OUTPUT_FILE}" "$(pwd)/${OUTPUT_FILE}"
-    
-    echo "[5/5] Package saved!"
-    echo ""
-    echo "=== Build Complete ==="
-    echo "File: /root/${OUTPUT_FILE}"
-    echo ""
-    echo "Install on this router:"
-    echo "  apk add --allow-untrusted /root/${OUTPUT_FILE}"
-    echo ""
-    echo "Or copy to another router and install:"
-    echo "  scp /root/${OUTPUT_FILE} root@<router-ip>:/tmp/"
-    echo "  ssh root@<router-ip> 'apk add --allow-untrusted /tmp/${OUTPUT_FILE}'"
-else
-    echo "[ERROR] Failed to create package!"
-    exit 1
-fi
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-0}" "$APK" mkpkg \
+    --info "name:$PKG_NAME" \
+    --info "version:$PKG_VERSION" \
+    --info "description:$PKG_DESC" \
+    --info "arch:noarch" \
+    --info "license:MIT" \
+    --info "origin:luci-app-picoclaw" \
+    --info "url:https://github.com/altman08/luci-app-picoclaw" \
+    --info "maintainer:$PKG_MAINTAINER" \
+    --info "depends:luci-compat luci-lib-jsonc curl ca-bundle" \
+    --script "post-install:$BUILD_DIR/post-install" \
+    --script "post-upgrade:$BUILD_DIR/post-install" \
+    --files "$PKG_ROOT" \
+    --output "$BUILD_DIR/$OUTPUT_FILE"
 
-# Cleanup
-rm -rf "${BUILD_DIR}"
+# Never publish a partial or invalid package as a successful build.
+"$APK" --allow-untrusted verify "$BUILD_DIR/$OUTPUT_FILE"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(CDPATH='' cd -- "$OUTPUT_DIR" && pwd)"
+cp "$BUILD_DIR/$OUTPUT_FILE" "$OUTPUT_DIR/$OUTPUT_FILE"
+printf '\nCreated unsigned APK: %s/%s\n' "$OUTPUT_DIR" "$OUTPUT_FILE"
+printf 'Install on OpenWrt with: apk add --allow-untrusted /tmp/%s\n' "$OUTPUT_FILE"
+printf 'Includes /etc/init.d/picoclaw; no launcher, core binary or skill files are bundled.\n'
+printf 'Install /usr/bin/picoclaw separately. A core package owning the same init script will conflict.\n'

@@ -12,6 +12,7 @@ function index()
     -- Chat API endpoints (no menu entry, used by XHR)
     entry({"admin", "services", "picoclaw", "chat_send"}, call("action_chat_send"), nil)
     entry({"admin", "services", "picoclaw", "chat_poll"}, call("action_chat_poll"), nil)
+    entry({"admin", "services", "picoclaw", "chat_clear"}, call("action_chat_clear"), nil)
 end
 
 -- Parse JSON using luci.jsonc instead of manual regex
@@ -100,18 +101,7 @@ start_service() {
     procd_set_param user root
     procd_close_instance
 }
-stop_service() {
-    # First try graceful shutdown via procd
-    killall picoclaw 2>/dev/null
-    sleep 1
-    # Force kill if still alive (procd may respawn)
-    if [ -n "$(pidof picoclaw)" ]; then
-        kill -9 $(pidof picoclaw) 2>/dev/null
-        sleep 1
-    fi
-    # Final cleanup: ensure no zombie processes
-    sleep 1
-}
+# rc.common stop removes the procd instance and its respawn policy.
 service_triggers() {
     procd_add_reload_trigger "picoclaw"
 }
@@ -542,7 +532,7 @@ function do_upload_install(upload_path)
     end
 
     -- Stop service, install, restart
-    sys.exec("killall picoclaw 2>/dev/null")
+    sys.exec("/etc/init.d/picoclaw stop 2>/dev/null")
     sys.exec("sleep 1")
     sys.exec("cp /usr/bin/picoclaw /usr/bin/picoclaw.bak 2>/dev/null")
     sys.exec("cp /tmp/picoclaw-update/picoclaw /usr/bin/picoclaw")
@@ -560,7 +550,7 @@ function do_update()
         sys.exec("logger -t picoclaw 'Update failed: cannot find release asset (" .. (err or "unknown") .. ")'")
         return
     end
-    sys.exec("killall picoclaw 2>/dev/null")
+    sys.exec("/etc/init.d/picoclaw stop 2>/dev/null")
     sys.exec("sleep 1")
     sys.exec("mkdir -p /tmp/picoclaw-update")
     sys.exec("curl -L -o /tmp/picoclaw-update/picoclaw.tar.gz '" .. dl_url .. "' --max-time 180 2>&1")
@@ -859,10 +849,86 @@ end
 -- ============================================================
 local CHAT_DIR = "/tmp/picoclaw-chat"
 local CHAT_HISTORY_FILE = CHAT_DIR .. "/history.json"
+local CHAT_SESSION_FILE = CHAT_DIR .. "/session"
+
+-- CLI output is not a chat payload. Lua 5.1 needs an explicit ESC byte,
+-- and UTF-8 banner glyphs must be removed as strings, not a byte character class.
+local function clean_chat_reply(reply)
+    reply = (reply or ""):gsub(string.char(27) .. "%[[0-?]*[ -/]*[@-~]", "")
+    reply = reply:gsub("\r", "")
+
+    local lines = {}
+    local leading = true
+    for line in (reply .. "\n"):gmatch("([^\n]*)\n") do
+        local banner = line
+        for _, glyph in ipairs({"█", "╗", "╔", "═", "║", "╚", "╝", "╠", "╣", "╦", "╩", "╬"}) do
+            banner = banner:gsub(glyph, "")
+        end
+        if not (leading and banner:match("^%s*$")) then
+            leading = false
+            table.insert(lines, line)
+        end
+    end
+    reply = table.concat(lines, "\n")
+
+    -- agent prints the final answer after its lobster logo. Keep diagnostics
+    -- when no answer was produced, but omit startup logs from successful replies.
+    if reply:sub(1, #"🦞 ") == "🦞 " then
+        reply = reply:sub(#"🦞 " + 1)
+    else
+        local _, answer_start = reply:find("\n🦞 ", 1, true)
+        if answer_start then reply = reply:sub(answer_start + 1) end
+    end
+    return reply:match("^%s*(.-)%s*$") or ""
+end
 
 -- Ensure chat directory exists
 local function ensure_chat_dir()
     sys.exec("mkdir -p '" .. CHAT_DIR .. "'")
+end
+
+-- Give LuCI its own context; never reset a shared CLI/channel session.
+local function get_chat_session()
+    ensure_chat_dir()
+    local f = io.open(CHAT_SESSION_FILE, "r")
+    if f then
+        local session = f:read("*l") or ""
+        f:close()
+        if session:match("^%d+$") then return session end
+    end
+    local session = tostring(os.time()) .. tostring(nixio.getpid()) .. tostring(math.random(100000, 999999))
+    f = io.open(CHAT_SESSION_FILE, "w")
+    if not f then return nil end
+    f:write(session)
+    f:close()
+    return session
+end
+
+function action_chat_clear()
+    if http.getenv("REQUEST_METHOD") ~= "POST" then
+        http.status(405, "Method Not Allowed")
+        return
+    end
+    if not check_csrf() then return end
+    http.prepare_content("application/json")
+    ensure_chat_dir()
+    -- Remove the session ID first so the next message gets a fresh context.
+    if nixio.fs.access(CHAT_SESSION_FILE) and not os.remove(CHAT_SESSION_FILE) then
+        http.write_json({error = "Unable to reset chat session"})
+        return
+    end
+    local failed = false
+    for name in nixio.fs.dir(CHAT_DIR) do
+        if name == "history.json" or name:match("^result_%d+$")
+            or name:match("^status_%d+$") or name:match("^session_%d+$") then
+            if not os.remove(CHAT_DIR .. "/" .. name) then failed = true end
+        end
+    end
+    if failed then
+        http.write_json({error = "Unable to delete chat history"})
+    else
+        http.write_json({ok = true})
+    end
 end
 
 -- Read chat history from file
@@ -874,7 +940,14 @@ local function read_chat_history()
     f:close()
     if content == "" then return {} end
     local ok, data = pcall(jsonc.parse, content)
-    if ok and type(data) == "table" then return data end
+    if ok and type(data) == "table" then
+        for _, message in ipairs(data) do
+            if type(message) == "table" and message.role == "assistant" and type(message.content) == "string" then
+                message.content = clean_chat_reply(message.content)
+            end
+        end
+        return data
+    end
     return {}
 end
 
@@ -900,6 +973,7 @@ local function sanitize_input(s)
 end
 
 function action_chat_send()
+    if not check_csrf() then return end
     http.prepare_content("application/json")
     local msg = http.formvalue("message") or ""
     if msg == "" then
@@ -915,6 +989,11 @@ function action_chat_send()
     end
 
     msg = sanitize_input(msg)
+    local session = get_chat_session()
+    if not session then
+        http.write_json({error = "Unable to create chat session"})
+        return
+    end
 
     -- Read existing history
     local history = read_chat_history()
@@ -928,13 +1007,21 @@ function action_chat_send()
     local result_file = CHAT_DIR .. "/result_" .. task_id
     local status_file = CHAT_DIR .. "/status_" .. task_id
 
+    local tf = io.open(CHAT_DIR .. "/session_" .. task_id, "w")
+    if not tf then
+        http.write_json({error = "Unable to create chat task"})
+        return
+    end
+    tf:write(session)
+    tf:close()
+
     -- Write "running" status
     local sf = io.open(status_file, "w")
     if sf then sf:write("running"); sf:close() end
 
     -- Launch picoclaw agent in background (must run from /root to find config)
     local escaped_msg = msg:gsub("'", "'\\''")
-    local cmd = "HOME=/root picoclaw agent --message '" .. escaped_msg .. "' > '" .. result_file .. "' 2>&1 &"
+    local cmd = "HOME=/root NO_COLOR=1 picoclaw agent --session cli:luci-" .. session .. " --message '" .. escaped_msg .. "' > '" .. result_file .. "' 2>&1 &"
     os.execute(cmd)
 
     http.write_json({ok = true, task_id = task_id})
@@ -957,6 +1044,18 @@ function action_chat_poll()
 
     local status_file = CHAT_DIR .. "/status_" .. task_id
     local result_file = CHAT_DIR .. "/result_" .. task_id
+
+    -- Cleared tasks must not put their late replies back into history.
+    local tf = io.open(CHAT_DIR .. "/session_" .. task_id, "r")
+    local task_session = tf and tf:read("*l") or ""
+    if tf then tf:close() end
+    local cf = io.open(CHAT_SESSION_FILE, "r")
+    local current_session = cf and cf:read("*l") or ""
+    if cf then cf:close() end
+    if task_session == "" or task_session ~= current_session then
+        http.write_json({status = "not_found"})
+        return
+    end
 
     -- Check status
     local sf = io.open(status_file, "r")
@@ -982,22 +1081,10 @@ function action_chat_poll()
             local wf = io.open(status_file, "w")
             if wf then wf:write("done"); wf:close() end
 
+            reply = clean_chat_reply(reply)
             -- Add assistant reply to history
             if reply ~= "" then
                 local history = read_chat_history()
-                -- Strip ANSI escape codes using pure Lua (safer than echo+sed shell injection)
-                reply = reply:gsub("\x1b%[[0-9;]*m", "")
-                -- Also strip carriage returns and the banner
-                reply = reply:gsub("\r", "")
-                -- Remove empty lines and the banner lines
-                local clean_lines = {}
-                for line in reply:gmatch("[^\n]+") do
-                    -- Skip banner lines (contain only block characters)
-                    if not line:match("^[%s█╗╔═║╚╝╠╣╦╩╬]*$") then
-                        table.insert(clean_lines, line)
-                    end
-                end
-                reply = table.concat(clean_lines, "\n"):match("^%s*(.-)%s*$") or ""
                 table.insert(history, {role = "assistant", content = reply, time = os.time()})
                 write_chat_history(history)
             end
@@ -1014,8 +1101,7 @@ function action_chat_poll()
             reply = rf:read("*a")
             rf:close()
         end
-        reply = reply:gsub("\x1b%[[0-9;]*m", "")
-        reply = reply:match("^%s*(.-)%s*$") or ""
+        reply = clean_chat_reply(reply)
         http.write_json({status = status, reply = reply})
     end
 end
@@ -1031,10 +1117,15 @@ function action_do()
         sys.exec("/etc/init.d/picoclaw start")
         msg = "服务正在启动..."
     elseif action == "stop" then
-        sys.exec("/etc/init.d/picoclaw stop; killall picoclaw 2>/dev/null")
-        msg = "服务已停止。"
+        local result = sys.call("/etc/init.d/picoclaw stop >/dev/null 2>&1")
+        if result == 0 and not get_status().running then
+            msg = "服务已停止。"
+        else
+            msg = "停止未完成，请检查 init 脚本和服务日志。"
+            ok = false
+        end
     elseif action == "restart" then
-        sys.exec("/etc/init.d/picoclaw stop; killall picoclaw 2>/dev/null; sleep 1; /etc/init.d/picoclaw start")
+        sys.exec("/etc/init.d/picoclaw restart")
         msg = "服务已重启。"
     elseif action == "install_picoclaw" then
         local arch, raw_arch = get_picoclaw_arch()
@@ -1078,7 +1169,7 @@ function action_do()
                     f:close()
                     -- Sync workspace memory files so PicoClaw's AI context reflects the new model
                     sync_workspace_memory(cfg_obj)
-                    sys.exec("/etc/init.d/picoclaw stop; killall picoclaw 2>/dev/null; sleep 1; /etc/init.d/picoclaw start")
+                    sys.exec("/etc/init.d/picoclaw restart")
                     msg = "配置已保存，服务已重启！"
                 else
                     msg = "错误：无法写入配置文件"
@@ -1378,6 +1469,7 @@ function action_main()
         chat_history_json = chat_history_json,
         chat_send_url = dispatcher.build_url("admin", "services", "picoclaw", "chat_send"),
         chat_poll_url = dispatcher.build_url("admin", "services", "picoclaw", "chat_poll"),
+        chat_clear_url = dispatcher.build_url("admin", "services", "picoclaw", "chat_clear"),
         picoclaw_installed = picoclaw_installed,
         picoclaw_arch = html_escape(picoclaw_arch or ""),
         picoclaw_raw_arch = html_escape(picoclaw_raw_arch or ""),

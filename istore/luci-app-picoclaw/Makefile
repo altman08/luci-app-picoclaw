@@ -2,22 +2,14 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-picoclaw
 PKG_VERSION:=1.1.6
-PKG_RELEASE:=
+PKG_RELEASE:=1
+PKG_LICENSE:=MIT
 
 LUCI_TITLE:=LuCI support for PicoClaw AI Assistant
-LUCI_DESCRIPTION:=PicoClaw is a lightweight AI gateway for OpenWrt routers. This package provides a LuCI web interface for managing PicoClaw service, channels, config, hardware (GPIO/USB), skills, and cron jobs. The PicoClaw binary must be installed separately (see https://github.com/sipeed/picoclaw).
+LUCI_DESCRIPTION:=LuCI web interface for managing PicoClaw service, channels, config, hardware, skills and cron jobs.
 LUCI_PKGARCH:=all
-LUCI_DEPENDS:=+luci-lib-jsonc +curl
+LUCI_DEPENDS:=+luci-compat +luci-lib-jsonc +curl +picoclaw
 
 include $(TOPDIR)/feeds/luci/luci.mk
-
-define Package/luci-app-picoclaw/install
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-diagnostics
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-backup
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-app-installer
-	$(INSTALL_DATA) ./skills/openwrt-diagnostics/SKILL.md $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-diagnostics/
-	$(INSTALL_DATA) ./skills/openwrt-backup/SKILL.md $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-backup/
-	$(INSTALL_DATA) ./skills/openwrt-app-installer/SKILL.md $(1)/usr/lib/lua/luci/picoclaw-skills/openwrt-app-installer/
-endef
 
 # call BuildPackage - OpenWrt buildroot signature
