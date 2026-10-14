@@ -1,125 +1,133 @@
 <%+header%>
 <style>
-.pc{max-width:960px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.pc-card{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+:root{--pc-surface:#fff;--pc-soft:#f8f9fa;--pc-field:#fafbfc;--pc-hover:#eef1f6;--pc-head:#f5f7fa;--pc-muted-bg:#f0f0f0;--pc-border:#e0e0e0;--pc-line:#f0f0f0;--pc-text:#333;--pc-secondary:#555;--pc-muted:#888;--pc-faint:#999;--pc-link:#1976d2;--pc-blue-text:#1565c0;--pc-blue-bg:#e3f2fd;--pc-green-bg:#e8f5e9;--pc-green-text:#2e7d32;--pc-red-bg:#ffebee;--pc-red-text:#c62828;--pc-orange-bg:#fff3e0;--pc-orange-text:#e65100;--pc-code:#e8eaf6;--pc-green-border:#c8e6c9;--pc-red-border:#ffcdd2;--pc-blue-border:#bbdefb;--pc-log-bg:#1e1e1e;--pc-log-text:#d4d4d4;--pc-disabled:#bbb;--pc-color-scheme:light}
+:root.pc-dark,:root[data-darkmode="true"],:root[data-theme="dark"],:root[data-bs-theme="dark"]{--pc-surface:#20242c;--pc-soft:#282e38;--pc-field:#252b34;--pc-hover:#343d49;--pc-head:#2b323d;--pc-muted-bg:#343b46;--pc-border:#424b59;--pc-line:#353d49;--pc-text:#e5e9f0;--pc-secondary:#c2cad6;--pc-muted:#a5afbe;--pc-faint:#a0aabb;--pc-link:#82bcff;--pc-blue-text:#9ccaff;--pc-blue-bg:#203a54;--pc-green-bg:#203d2d;--pc-green-text:#91d7a6;--pc-red-bg:#4b2930;--pc-red-text:#ffacb3;--pc-orange-bg:#483921;--pc-orange-text:#ffc27c;--pc-code:#353950;--pc-green-border:#3e6b4b;--pc-red-border:#7d424b;--pc-blue-border:#456a91;--pc-log-bg:#151920;--pc-log-text:#d4d4d4;--pc-disabled:#7a8799;--pc-color-scheme:dark}
+.pc,.pc-card{color:var(--pc-text);color-scheme:var(--pc-color-scheme)}
+.pc h2,.pc h3{background:transparent;box-shadow:none}
+.pc .cfg-input,.pc .pc-editor,.pc .chat-input{color:var(--pc-text);background:var(--pc-field)}
+.pc input::placeholder,.pc textarea::placeholder{color:var(--pc-faint);opacity:1}
+
+.pc{width:100%;max-width:1200px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.pc-card{background:var(--pc-surface);border:1px solid var(--pc-border);border-radius:10px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .pc-status{display:flex;align-items:center;gap:14px;padding:16px;border-radius:8px;flex-wrap:wrap}
-.pc-status.run{background:#e8f5e9}.pc-status.stop{background:#ffebee}
+.pc-status.run{background:var(--pc-green-bg)}.pc-status.stop{background:var(--pc-red-bg)}
 .dot{width:14px;height:14px;border-radius:50%}
 .dot.on{background:#4caf50;box-shadow:0 0 8px #4caf50}.dot.off{background:#f44336}
 .pc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:14px}
-.pc-metric{text-align:center;padding:12px;background:#f8f9fa;border-radius:6px}
-.pc-metric .val{font-size:22px;font-weight:700;color:#333}
-.pc-metric .lbl{font-size:12px;color:#888;margin-top:4px}
+.pc-metric{text-align:center;padding:12px;background:var(--pc-soft);border-radius:6px}
+.pc-metric .val{font-size:22px;font-weight:700;color:var(--pc-text)}
+.pc-metric .lbl{font-size:12px;color:var(--pc-muted);margin-top:4px}
 .pc-btn{display:inline-block;padding:7px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin:2px;transition:all .2s;text-decoration:none;color:#fff}
 .pc-btn:active{transform:scale(.97)}.pc-btn:hover{box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .pc-btn.green{background:#43a047}.pc-btn.orange{background:#ef6c00}
 .pc-btn.blue{background:#1e88e5}.pc-btn.purple{background:#8e24aa}
 .pc-btn.gray{background:#616161}.pc-btn:visited{color:#fff}
-.pc-tabs{display:flex;border-bottom:2px solid #e0e0e0;margin-bottom:0}
-.pc-tab{padding:10px 20px;cursor:pointer;font-size:14px;color:#888;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
-.pc-tab.act{color:#1976d2;border-bottom-color:#1976d2;font-weight:600}
-.pc-tab:hover{color:#1976d2}
+.pc-tabs{display:flex;border-bottom:2px solid var(--pc-border);margin-bottom:0}
+.pc-tab{padding:10px 20px;cursor:pointer;font-size:14px;color:var(--pc-muted);border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.pc-tab.act{color:var(--pc-link);border-bottom-color:#1976d2;font-weight:600}
+.pc-tab:hover{color:var(--pc-link)}
 .pc-panel{display:none;padding-top:16px}.pc-panel.act{display:block}
-.ch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.ch-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--pc-line)}
 .ch-row:last-child{border:none}
 .ch-name{font-size:14px;font-weight:500}
 .badge{display:inline-block;padding:3px 12px;border-radius:12px;font-size:12px;font-weight:600}
-.badge-on{background:#c8e6c9;color:#2e7d32}.badge-off{background:#ffcdd2;color:#c62828}
+.badge-on{background:var(--pc-green-bg);color:var(--pc-green-text)}.badge-off{background:var(--pc-red-bg);color:var(--pc-red-text)}
 .cfg-section{margin-bottom:20px}.cfg-section:last-child{margin-bottom:0}
-.cfg-section-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:12px 16px;background:#f5f7fa;border-radius:8px;margin-bottom:2px;transition:background .2s}
-.cfg-section-head:hover{background:#eef1f6}
+.cfg-section-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:12px 16px;background:var(--pc-head);border-radius:8px;margin-bottom:2px;transition:background .2s}
+.cfg-section-head:hover{background:var(--pc-hover)}
 .cfg-section-head .icon{font-size:18px;width:28px;text-align:center;flex-shrink:0}
-.cfg-section-head h4{margin:0;font-size:15px;font-weight:600;color:#333;flex:1}
-.cfg-section-head .arrow{font-size:12px;color:#999;transition:transform .2s}
+.cfg-section-head h4{margin:0;font-size:15px;font-weight:600;color:var(--pc-text);flex:1}
+.cfg-section-head .arrow{font-size:12px;color:var(--pc-faint);transition:transform .2s}
 .cfg-section.closed .arrow{transform:rotate(-90deg)}
-.cfg-section-body{padding:14px 16px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px;background:#fafbfc}
+.cfg-section-body{padding:14px 16px;border:1px solid var(--pc-line);border-top:none;border-radius:0 0 8px 8px;background:var(--pc-field)}
 .cfg-section.closed .cfg-section-body{display:none}
-.cfg-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.cfg-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--pc-line)}
 .cfg-row:last-child{border-bottom:none}
-.cfg-label{flex:0 0 160px;font-size:13px;color:#555;padding-top:6px;line-height:1.4}
-.cfg-label small{display:block;font-size:11px;color:#999;margin-top:2px}
+.cfg-label{flex:0 0 160px;font-size:13px;color:var(--pc-secondary);padding-top:6px;line-height:1.4}
+.cfg-label small{display:block;font-size:11px;color:var(--pc-faint);margin-top:2px}
 .cfg-field{flex:1;min-width:0}
-.cfg-input{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;transition:border-color .2s,box-shadow .2s;background:#fff}
-.cfg-input:focus{outline:none;border-color:#1976d2;box-shadow:0 0 0 3px rgba(25,118,210,.1)}
-.cfg-input-sm{width:200px}.cfg-input-xs{width:80px}
-.toggle-wrap{display:flex;align-items:center;gap:10px;padding-top:4px}
-.toggle{position:relative;width:44px;height:24px;flex-shrink:0}
-.toggle input{opacity:0;width:0;height:0}
-.toggle .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:24px;transition:all .25s}
-.toggle .slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:all .25s}
-.toggle input:checked+.slider{background:#1976d2}
-.toggle input:checked+.slider:before{transform:translateX(20px)}
-.toggle-label{font-size:13px;color:#666;transition:color .2s}
-.toggle-label.on{color:#2e7d32}.toggle-label.off{color:#999}
+.cfg-input{width:100%;padding:8px 12px;border:1px solid var(--pc-border);border-radius:6px;font-size:13px;box-sizing:border-box;transition:border-color .2s,box-shadow .2s;background:var(--pc-surface)}
+.cfg-input:focus{outline:none;border-color:var(--pc-link);box-shadow:0 0 0 3px rgba(25,118,210,.1)}
+.cfg-input-sm{width:320px;max-width:100%}.cfg-input-text{width:480px;max-width:100%}.cfg-input-number{width:200px;max-width:100%}.cfg-input-xs{width:80px;max-width:100%}
+.pc input.pc-checkbox[type="checkbox"]{appearance:auto;-webkit-appearance:checkbox;display:inline-block;position:static;opacity:1;width:18px;height:18px;margin:6px 0;padding:0;flex-shrink:0;cursor:pointer;accent-color:#1976d2;box-shadow:none}
 .cfg-mode-bar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.mode-label{font-size:13px;color:#666;font-weight:600}
+.mode-label{font-size:13px;color:var(--pc-secondary);font-weight:600}
 .cfg-mode-btns{display:flex;gap:6px}
-.cfg-mode-btn{padding:6px 16px;border:2px solid #e0e0e0;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;color:#666;transition:all .2s}
-.cfg-mode-btn.act{border-color:#1976d2;color:#1976d2;background:#e3f2fd;font-weight:600}
-.cfg-mode-btn:hover{border-color:#90caf9}
+.cfg-mode-btn{padding:6px 16px;border:2px solid var(--pc-border);border-radius:6px;background:var(--pc-surface);cursor:pointer;font-size:13px;color:var(--pc-secondary);transition:all .2s}
+.cfg-mode-btn.act{border-color:var(--pc-link);color:var(--pc-link);background:var(--pc-blue-bg);font-weight:600}
+.cfg-mode-btn:hover{border-color:var(--pc-link)}
 .pc-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.pc-editor{width:100%;min-height:400px;font-family:'Courier New',monospace;font-size:13px;padding:12px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;resize:vertical;background:#fafbfc}
-.pc-log{background:#1e1e1e;color:#d4d4d4;padding:14px;border-radius:8px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6}
+.pc-editor{width:100%;min-height:400px;font-family:'Courier New',monospace;font-size:13px;padding:12px;border:1px solid var(--pc-border);border-radius:8px;box-sizing:border-box;resize:vertical;background:var(--pc-field)}
+.pc-log{background:var(--pc-log-bg);color:var(--pc-log-text);padding:14px;border-radius:8px;font-family:'Courier New',monospace;font-size:12px;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6}
 .update-banner{display:flex;align-items:center;gap:14px;padding:14px;border-radius:8px;margin-bottom:14px}
-.update-banner.available{background:#fff3e0}.update-banner.latest{background:#e8f5e9}.update-banner.error{background:#f5f5f5}
+.update-banner.available{background:var(--pc-orange-bg)}.update-banner.latest{background:var(--pc-green-bg)}.update-banner.error{background:var(--pc-soft)}
 .update-icon{font-size:28px;flex-shrink:0}
-.update-text{flex:1}.update-text strong{display:block;font-size:14px}.update-text .detail{font-size:12px;color:#666;margin-top:2px}
-.ver-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.update-text{flex:1}.update-text strong{display:block;font-size:14px}.update-text .detail{font-size:12px;color:var(--pc-secondary);margin-top:2px}
+.ver-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--pc-line);font-size:13px}
 .ver-row:last-child{border:none}
-.ver-row .label{color:#888}.ver-row .value{color:#333;font-weight:500}
-.upload-install-area{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#f8f9fa;border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
-.upload-label{font-size:13px;font-weight:600;color:#555;white-space:nowrap}
-.upload-file-label{display:inline-flex;align-items:center;flex:1;min-width:160px;max-width:320px;padding:7px 14px;border:2px dashed #bbb;border-radius:6px;cursor:pointer;transition:all .2s;background:#fff;color:#666;font-size:13px}
-.upload-file-label:hover{border-color:#1e88e5;color:#1e88e5;background:#e3f2fd}
+.ver-row .label{color:var(--pc-muted)}.ver-row .value{color:var(--pc-text);font-weight:500}
+.upload-install-area{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--pc-soft);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+.upload-label{font-size:13px;font-weight:600;color:var(--pc-secondary);white-space:nowrap}
+.upload-file-label{display:inline-flex;align-items:center;flex:1;min-width:160px;max-width:320px;padding:7px 14px;border:2px dashed var(--pc-border);border-radius:6px;cursor:pointer;transition:all .2s;background:var(--pc-surface);color:var(--pc-secondary);font-size:13px}
+.upload-file-label:hover{border-color:var(--pc-link);color:var(--pc-link);background:var(--pc-blue-bg)}
 .upload-file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
 .upload-file-label input[type="file"]{display:none}
 .flash-ok{padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px}
-.flash-ok.flash-ok{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
-.flash-ok.flash-err{background:#ffebee;color:#c62828;border:1px solid #ffcdd2}
+.flash-ok.flash-ok{background:var(--pc-green-bg);color:var(--pc-green-text);border:1px solid var(--pc-green-border)}
+.flash-ok.flash-err{background:var(--pc-red-bg);color:var(--pc-red-text);border:1px solid var(--pc-red-border)}
 .lang-bar{display:flex;gap:4px}
-.lang-btn{padding:4px 10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;cursor:pointer;font-size:12px;color:#888;transition:all .15s}
-.lang-btn.act{background:#1976d2;color:#fff;border-color:#1976d2}
-.lang-btn:hover{border-color:#90caf9}
-.hw-card{background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:14px 16px;margin-bottom:14px}
-.hw-card h4{margin:0 0 10px 0;font-size:14px;color:#333;display:flex;align-items:center;gap:8px}
+.lang-btn{padding:4px 10px;border:1px solid var(--pc-border);border-radius:4px;background:var(--pc-surface);cursor:pointer;font-size:12px;color:var(--pc-muted);transition:all .15s}
+.lang-btn.act{background:#1976d2;color:#fff;border-color:var(--pc-link)}
+.lang-btn:hover{border-color:var(--pc-link)}
+.hw-card{background:var(--pc-soft);border:1px solid var(--pc-line);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.hw-card h4{margin:0 0 10px 0;font-size:14px;color:var(--pc-text);display:flex;align-items:center;gap:8px}
 .hw-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
-.hw-row .k{color:#888}.hw-row .v{color:#333;font-weight:500}
-.hw-led-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.hw-row .k{color:var(--pc-muted)}.hw-row .v{color:var(--pc-text);font-weight:500}
+.hw-led-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--pc-line)}
 .hw-led-item:last-child{border:none}
 .hw-led-name{font-size:13px;font-weight:500}
 .hw-led-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:middle}
-.hw-usb-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#333}
-.hw-section-head{cursor:pointer;user-select:none;padding:10px 14px;background:#f0f2f5;border-radius:6px;font-size:13px;color:#555;display:flex;align-items:center;gap:8px;margin-top:10px}
-.hw-section-head:hover{background:#e8ebee}
+.hw-usb-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:var(--pc-text)}
+.hw-section-head{cursor:pointer;user-select:none;padding:10px 14px;background:var(--pc-head);border-radius:6px;font-size:13px;color:var(--pc-secondary);display:flex;align-items:center;gap:8px;margin-top:10px}
+.hw-section-head:hover{background:var(--pc-hover)}
 .hw-section-head .arrow{margin-left:auto;transition:transform .2s;font-size:11px}
 .hw-section.closed .arrow{transform:rotate(-90deg)}
 .hw-section.closed .hw-section-body{display:none}
 .hw-gpio-table{width:100%;font-size:12px;border-collapse:collapse;margin-top:8px}
-.hw-gpio-table th{text-align:left;padding:5px 8px;background:#eef1f5;font-weight:600;color:#555;border-bottom:2px solid #ddd}
-.hw-gpio-table td{padding:3px 8px;border-bottom:1px solid #f0f0f0}
-.hw-gpio-table tr:hover{background:#f5f7fa}
-.hw-empty{color:#bbb;font-size:13px;text-align:center;padding:16px 0}
-.chat-container{display:flex;flex-direction:column;height:450px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;background:#fff}
+.hw-gpio-table th{text-align:left;padding:5px 8px;background:var(--pc-head);font-weight:600;color:var(--pc-secondary);border-bottom:2px solid var(--pc-border)}
+.hw-gpio-table td{padding:3px 8px;border-bottom:1px solid var(--pc-line)}
+.hw-gpio-table tr:hover{background:var(--pc-head)}
+.hw-empty{color:var(--pc-faint);font-size:13px;text-align:center;padding:16px 0}
+.chat-container{display:flex;flex-direction:column;height:450px;border:1px solid var(--pc-border);border-radius:8px;overflow:hidden;background:var(--pc-surface)}
 .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .chat-msg{max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word}
-.chat-msg.user{align-self:flex-end;background:#e3f2fd;color:#1a237e;border-bottom-right-radius:4px}
-.chat-msg.assistant{align-self:flex-start;background:#f5f5f5;color:#333;border-bottom-left-radius:4px}
-.chat-msg .time{font-size:11px;color:#999;margin-top:4px}
+.chat-msg.user{align-self:flex-end;background:var(--pc-blue-bg);color:var(--pc-blue-text);border-bottom-right-radius:4px}
+.chat-msg.assistant{align-self:flex-start;background:var(--pc-soft);color:var(--pc-text);border-bottom-left-radius:4px}
+.chat-msg .time{font-size:11px;color:var(--pc-faint);margin-top:4px}
 .chat-msg.user .time{text-align:right}
-.chat-msg.system{align-self:center;background:#fff8e1;color:#f57f17;font-size:12px;border-radius:6px;padding:6px 12px;max-width:90%}
-.chat-input-bar{display:flex;gap:8px;padding:12px;border-top:1px solid #e0e0e0;background:#fafbfc;align-items:center}
-.chat-input{flex:1;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s;box-sizing:border-box}
-.chat-input:focus{border-color:#1976d2}
-.chat-input:disabled{background:#f0f0f0;color:#999}
+.chat-msg.system{align-self:center;background:var(--pc-orange-bg);color:var(--pc-orange-text);font-size:12px;border-radius:6px;padding:6px 12px;max-width:90%}
+.chat-input-bar{display:flex;gap:8px;padding:12px;border-top:1px solid var(--pc-border);background:var(--pc-field);align-items:center}
+.chat-input{flex:1;padding:10px 14px;border:1px solid var(--pc-border);border-radius:8px;font-size:14px;outline:none;transition:border-color .2s;box-sizing:border-box}
+.chat-input:focus{border-color:var(--pc-link)}
+.chat-input:disabled{background:var(--pc-muted-bg);color:var(--pc-faint)}
 .chat-send{padding:10px 20px;border:none;border-radius:8px;background:#1976d2;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
-.chat-send:hover{background:#1565c0}.chat-send:disabled{background:#bbb;cursor:not-allowed}
-.chat-typing{display:none;align-self:flex-start;padding:8px 16px;color:#888;font-size:13px}
+.chat-send:hover{background:#1565c0}.chat-send:disabled{background:var(--pc-disabled);cursor:not-allowed}
+.chat-typing{display:none;align-self:flex-start;padding:8px 16px;color:var(--pc-muted);font-size:13px}
 .chat-typing.show{display:flex;align-items:center;gap:8px}
-.chat-typing-dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#999;margin:0 1px;animation:chatBounce .6s infinite alternate}
+.chat-typing-dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--pc-faint);margin:0 1px;animation:chatBounce .6s infinite alternate}
 .chat-typing-dots span:nth-child(2){animation-delay:.2s}.chat-typing-dots span:nth-child(3){animation-delay:.4s}
 @keyframes chatBounce{to{opacity:.3;transform:translateY(-4px)}}
-.chat-clear{padding:4px 10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;cursor:pointer;font-size:12px;color:#888;margin-left:auto}
-.chat-clear:hover{background:#fff3e0;border-color:#ffcc80;color:#e65100}
+.chat-clear{padding:4px 10px;border:1px solid var(--pc-border);border-radius:4px;background:var(--pc-surface);cursor:pointer;font-size:12px;color:var(--pc-muted);margin-left:auto}
+.chat-clear:hover{background:var(--pc-orange-bg);border-color:var(--pc-orange-text);color:var(--pc-orange-text)}
+@media(max-width:600px){
+.pc-card{padding:16px 12px}
+.cfg-section-body{padding:12px}
+.cfg-row{flex-wrap:wrap;gap:6px}
+.cfg-label{flex-basis:100%;padding-top:0}
+.cfg-field{flex-basis:100%}
+.pc-tabs{flex-wrap:wrap}
+.pc-tab{padding:10px 12px}
+}
 </style>
 <%
 local flash_msg = flash_msg or ""
@@ -134,14 +142,7 @@ if flash_msg ~= "" then
 <% end %>
 
 <div class="pc">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <div style="display:flex;align-items:center;gap:10px">
-    <div style="font-size:28px">&#129302;</div>
-    <div>
-      <h2 style="margin:0;font-size:20px;font-weight:700;color:#333">PicoClaw AI</h2>
-      <div style="font-size:11px;color:#999" id="picoclaw-subtitle">OpenWrt Router AI Agent Framework v<%=cur_ver%></div>
-    </div>
-  </div>
+<div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:12px">
   <div class="lang-bar">
     <button class="lang-btn act" onclick="setLang('zh')">中文</button>
     <button class="lang-btn" onclick="setLang('en')">EN</button>
@@ -157,14 +158,14 @@ if flash_msg ~= "" then
   <div style="display:flex;align-items:flex-start;gap:16px">
     <div style="font-size:48px;flex-shrink:0">&#128373;</div>
     <div style="flex:1">
-      <h3 style="margin:0 0 8px 0;color:#e65100;font-size:18px" data-i18n="picoclaw_not_installed">PicoClaw 未安装</h3>
-      <p style="margin:0 0 14px 0;color:#555;font-size:14px;line-height:1.6" data-i18n="picoclaw_not_installed_desc">
+      <h3 style="margin:0 0 8px 0;color:var(--pc-orange-text);font-size:18px" data-i18n="picoclaw_not_installed">PicoClaw 未安装</h3>
+      <p style="margin:0 0 14px 0;color:var(--pc-secondary);font-size:14px;line-height:1.6" data-i18n="picoclaw_not_installed_desc">
         检测到系统中未安装 PicoClaw 主程序。本界面仅是管理面板，需要先安装 PicoClaw AI 网关才能使用。
       </p>
       <% if picoclaw_arch_supported then %>
-      <div style="background:#f5f7fa;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px">
-        <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#888">系统架构</span><span style="font-weight:600;color:#333"><%=picoclaw_raw_arch%></span></div>
-        <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#888">下载版本</span><span style="font-weight:600;color:#333">picoclaw_<%=picoclaw_arch%>.tar.gz</span></div>
+      <div style="background:var(--pc-head);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--pc-muted)">系统架构</span><span style="font-weight:600;color:var(--pc-text)"><%=picoclaw_raw_arch%></span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--pc-muted)">下载版本</span><span style="font-weight:600;color:var(--pc-text)">picoclaw_<%=picoclaw_arch%>.tar.gz</span></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <form method="post" action="<%=action_url%>" style="display:inline">
@@ -172,12 +173,12 @@ if flash_msg ~= "" then
           <input type="hidden" name="action" value="install_picoclaw">
           <button type="submit" class="pc-btn green" style="padding:10px 28px;font-size:15px" onclick="this.disabled=true;this.innerHTML='&#8987; 安装中...';this.style.opacity='0.7'" data-i18n="install_picoclaw">&#9889; 一键安装 PicoClaw</button>
         </form>
-        <span style="font-size:12px;color:#999" data-i18n="install_tip">将从 GitHub 自动下载并安装（需要网络连接）</span>
+        <span style="font-size:12px;color:var(--pc-faint)" data-i18n="install_tip">将从 GitHub 自动下载并安装（需要网络连接）</span>
       </div>
       <% else %>
-      <div style="background:#ffebee;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#c62828">
+      <div style="background:var(--pc-red-bg);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--pc-red-text)">
         &#9888; <span data-i18n="arch_not_supported">当前架构（<%=picoclaw_raw_arch%>）暂不支持一键安装。请前往</span>
-        <a href="https://github.com/sipeed/picoclaw/releases" target="_blank" style="color:#1976d2">GitHub Releases</a>
+        <a href="https://github.com/sipeed/picoclaw/releases" target="_blank" style="color:var(--pc-link)">GitHub Releases</a>
         <span data-i18n="arch_not_supported_end">手动下载对应版本安装。</span>
       </div>
       <% end %>
@@ -253,7 +254,7 @@ if flash_msg ~= "" then
     <div class="dot <% if running then %>on<% else %>off<% end %>"></div>
     <div>
       <strong style="font-size:16px"><% if running then %><span data-i18n="running">运行中</span><% else %><span data-i18n="stopped">已停止</span><% end %></strong>
-      <div style="font-size:12px;color:#666;margin-top:2px">
+      <div style="font-size:12px;color:var(--pc-secondary);margin-top:2px">
         <% if running then %>PID: <%=pid%> | Gateway: <% if port_active then %><span data-i18n="normal">正常</span><% if gateway_port and gateway_port ~= "" then %> (<%=gateway_port%>)<% end %><% else %><span data-i18n="abnormal">异常</span><% end %><% else %><span data-i18n="service_not_running">服务未运行</span><% end %>
       </div>
     </div>
@@ -261,9 +262,9 @@ if flash_msg ~= "" then
       <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="start"><button type="submit" class="pc-btn green" data-i18n="start">启动</button></form>
       <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="stop"><button type="submit" class="pc-btn orange" data-i18n="stop">停止</button></form>
       <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="restart"><button type="submit" class="pc-btn blue" data-i18n="restart">重启</button></form>
-      <div style="width:1px;height:24px;background:#ddd;margin:0 4px"></div>
+      <div style="width:1px;height:24px;background:var(--pc-border);margin:0 4px"></div>
       <% if autostart then %>
-      <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="autostart_off"><button type="submit" class="pc-btn" style="background:#e8f5e9;color:#2e7d32;border-color:#c8e6c9" data-i18n="autostart_on">&#9889; 开机自启: 开</button></form>
+      <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="autostart_off"><button type="submit" class="pc-btn" style="background:var(--pc-green-bg);color:var(--pc-green-text);border-color:var(--pc-green-border)" data-i18n="autostart_on">&#9889; 开机自启: 开</button></form>
       <% else %>
       <form method="post" action="<%=action_url%>" style="display:inline"><input type="hidden" name="token" value="<%=csrf_token%>"><input type="hidden" name="action" value="autostart_on"><button type="submit" class="pc-btn gray" data-i18n="autostart_off">&#9889; 开机自启: 关</button></form>
       <% end %>
@@ -297,7 +298,7 @@ if flash_msg ~= "" then
       <h3 data-i18n="chat_title" style="margin:0;font-size:16px">&#128172; <span data-i18n="chat_title_text">与 PicoClaw 对话</span></h3>
       <button class="chat-clear" onclick="clearChat()" data-i18n="chat_clear">&#128465; 清空对话</button>
     </div>
-    <div style="font-size:12px;color:#888;margin-bottom:10px" data-i18n="chat_hint">通过 PicoClaw Agent 直接对话，回复可能需要几秒钟。</div>
+    <div style="font-size:12px;color:var(--pc-muted);margin-bottom:10px" data-i18n="chat_hint">通过 PicoClaw Agent 直接对话，回复可能需要几秒钟。</div>
     <div class="chat-container" id="chatBox">
       <div class="chat-messages" id="chatMessages">
         <div class="chat-msg system" data-i18n="chat_welcome">&#128075; 你好！我是 PicoClaw AI 助手，有什么可以帮你的？</div>
@@ -343,13 +344,13 @@ if flash_msg ~= "" then
               <div class="cfg-label" data-i18n="lbl_default_model">默认模型<small>agents.defaults.model_name</small></div>
               <div class="cfg-field">
                 <select class="cfg-input cfg-input-sm" id="default-model-select" data-path="agents.defaults.model_name" style="max-width:320px"></select>
-                <span style="font-size:11px;color:#999;margin-left:6px" data-i18n="hint_default_model">选择 model_list 中的一项作为当前使用的模型</span>
+                <span style="font-size:11px;color:var(--pc-faint);margin-left:6px" data-i18n="hint_default_model">选择 model_list 中的一项作为当前使用的模型</span>
               </div>
             </div>
 
             <!-- Quick-add preset buttons -->
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;padding:8px;background:#f0f4f8;border-radius:6px;font-size:11.5px">
-              <span style="color:#666;font-weight:600;margin-right:4px;line-height:26px" data-i18n="lbl_quick_add">快速添加:</span>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;padding:8px;background:var(--pc-head);border-radius:6px;font-size:11.5px">
+              <span style="color:var(--pc-secondary);font-weight:600;margin-right:4px;line-height:26px" data-i18n="lbl_quick_add">快速添加:</span>
               <button type="button" class="pc-btn gray" style="padding:3px 10px;font-size:11px" onclick="addModelPreset('zhipu')">智谱 GLM</button>
               <button type="button" class="pc-btn gray" style="padding:3px 10px;font-size:11px" onclick="addModelPreset('openrouter')">OpenRouter</button>
               <button type="button" class="pc-btn gray" style="padding:3px 10px;font-size:11px" onclick="addModelPreset('deepseek')">DeepSeek</button>
@@ -363,7 +364,7 @@ if flash_msg ~= "" then
             <!-- Dynamic model_list table -->
             <table style="width:100%;border-collapse:collapse;font-size:12px" id="model-list-table">
               <thead>
-                <tr style="background:#eef1f5;text-align:left">
+                <tr style="background:var(--pc-head);text-align:left">
                   <th style="padding:6px 4px;width:16%">model_name</th>
                   <th style="padding:6px 4px;width:22%">model</th>
                   <th style="padding:6px 4px;width:28%">api_base</th>
@@ -376,14 +377,14 @@ if flash_msg ~= "" then
                 <!-- dynamically populated -->
               </tbody>
             </table>
-            <div style="font-size:11px;color:#888;margin-top:6px;background:#fff8e1;padding:6px 10px;border-radius:4px;border-left:3px solid #ffc107" data-i18n="hint_model_edit">
+            <div style="font-size:11px;color:var(--pc-muted);margin-top:6px;background:var(--pc-orange-bg);padding:6px 10px;border-radius:4px;border-left:3px solid #ffc107" data-i18n="hint_model_edit">
               &#8505; 编辑 model_list 中每个模型的完整配置。API Key 保存在 model_list 的 api_keys 字段中，也可通过路由器终端用 <code>picoclaw config security</code> 配置到 .security.yml。
             </div>
 
             <div id="agent-extra-form-body"></div>
 
             <!-- Other agent settings -->
-            <div style="margin-top:14px;border-top:1px solid #eee;padding-top:10px">
+            <div style="margin-top:14px;border-top:1px solid var(--pc-line);padding-top:10px">
               <div class="cfg-row">
                 <div class="cfg-label" data-i18n="lbl_max_tokens">Token 上限<small>max_tokens</small></div>
                 <div class="cfg-field">
@@ -493,7 +494,7 @@ if flash_msg ~= "" then
         <span>🔌</span>
         <div>
           <span style="font-weight:500"><%=dev.product%></span>
-          <span style="color:#999;font-size:11px;margin-left:6px"><%=dev.bus_dev%></span>
+          <span style="color:var(--pc-faint);font-size:11px;margin-left:6px"><%=dev.bus_dev%></span>
         </div>
       </div>
       <% end %>
@@ -513,13 +514,13 @@ if flash_msg ~= "" then
         </form>
       </h4>
       <!-- Import skill form (hidden by default) -->
-      <div id="skill-import-form" style="display:none;margin-bottom:12px;padding:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px">
+      <div id="skill-import-form" style="display:none;margin-bottom:12px;padding:12px;background:var(--pc-surface);border:1px solid var(--pc-border);border-radius:8px">
         <div style="margin-bottom:8px">
-          <label style="font-size:12px;color:#666;font-weight:600" data-i18n="hw_skill_name">技能名称</label>
+          <label style="font-size:12px;color:var(--pc-secondary);font-weight:600" data-i18n="hw_skill_name">技能名称</label>
           <input type="text" id="import-skill-name" class="cfg-input" style="margin-top:4px;font-size:13px" placeholder="my-skill">
         </div>
         <div style="margin-bottom:10px">
-          <label style="font-size:12px;color:#666;font-weight:600" data-i18n="hw_skill_content">技能内容 (SKILL.md)</label>
+          <label style="font-size:12px;color:var(--pc-secondary);font-weight:600" data-i18n="hw_skill_content">技能内容 (SKILL.md)</label>
           <textarea id="import-skill-content" class="pc-editor" style="min-height:120px;margin-top:4px;font-size:12px" placeholder="description: &quot;技能描述&quot;&#10;---&#10;技能说明内容..."></textarea>
         </div>
         <div style="display:flex;gap:8px">
@@ -529,10 +530,10 @@ if flash_msg ~= "" then
       </div>
       <% if #hw_tools.skills > 0 then %>
       <% for _,sk in ipairs(hw_tools.skills) do %>
-      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0f0f0">
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--pc-line)">
         <div style="flex:1;min-width:0">
-          <span style="color:#1976d2;font-weight:600;font-size:13px"><%=sk.name%></span>
-          <% if sk.description ~= "" then %><div style="color:#888;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><%=sk.description%></div><% end %>
+          <span style="color:var(--pc-link);font-weight:600;font-size:13px"><%=sk.name%></span>
+          <% if sk.description ~= "" then %><div style="color:var(--pc-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><%=sk.description%></div><% end %>
         </div>
         <form method="post" action="<%=action_url%>" style="flex-shrink:0">
           <input type="hidden" name="token" value="<%=csrf_token%>">
@@ -552,7 +553,7 @@ if flash_msg ~= "" then
       <h4>⏰ <span data-i18n="hw_cron">定时任务</span> (<%=#hw_tools.cron_jobs%>)</h4>
       <% if #hw_tools.cron_jobs > 0 then %>
       <% for _,job in ipairs(hw_tools.cron_jobs) do %>
-      <div style="padding:4px 0;font-size:13px;color:#333;word-break:break-all;border-bottom:1px solid #f0f0f0"><%=job%></div>
+      <div style="padding:4px 0;font-size:13px;color:var(--pc-text);word-break:break-all;border-bottom:1px solid var(--pc-line)"><%=job%></div>
       <% end %>
       <% else %>
       <div class="hw-empty" data-i18n="hw_no_cron">暂无定时任务</div>
@@ -563,7 +564,7 @@ if flash_msg ~= "" then
     <div class="hw-section closed" id="hw-gpio-section">
       <div class="hw-section-head" onclick="document.getElementById('hw-gpio-section').classList.toggle('closed')">
         ⚡ <span data-i18n="hw_gpio">GPIO 引脚</span>
-        <span style="color:#999;font-size:12px">(<%=#hw_gpio%> pins)</span>
+        <span style="color:var(--pc-faint);font-size:12px">(<%=#hw_gpio%> pins)</span>
         <span class="arrow">▼</span>
       </div>
       <div class="hw-section-body">
@@ -604,6 +605,34 @@ if flash_msg ~= "" then
 </div>
 
 <script>
+// Follow the active LuCI theme, including themes without a dark-mode attribute.
+function syncPicoclawTheme() {
+  var root = document.documentElement, body = document.body;
+  var mode = root.getAttribute('data-darkmode');
+  var theme = root.getAttribute('data-theme') || root.getAttribute('data-bs-theme') || (body && (body.getAttribute('data-theme') || body.getAttribute('data-bs-theme')));
+  var dark;
+  if (mode === 'true' || mode === 'false') dark = mode === 'true';
+  else if (theme === 'dark' || theme === 'light') dark = theme === 'dark';
+  else {
+    dark = [root, body].some(function(el) { return el && ['dark','darkmode','dark-mode','theme-dark'].some(function(name) { return el.classList.contains(name); }); });
+    if (!dark && body) {
+      // Argon and other themes express their mode through the body background.
+      var rgb = getComputedStyle(body).backgroundColor.match(/[\d.]+/g);
+      if (rgb && rgb.length >= 3 && (rgb.length < 4 || Number(rgb[3]) > 0)) dark = (Number(rgb[0])*299 + Number(rgb[1])*587 + Number(rgb[2])*114)/1000 < 128;
+    }
+  }
+  if (root.classList.contains('pc-dark') !== dark) root.classList.toggle('pc-dark', dark);
+}
+syncPicoclawTheme();
+var pcThemeObserver = new MutationObserver(syncPicoclawTheme);
+[document.documentElement, document.body].forEach(function(el) {
+  if (el) pcThemeObserver.observe(el, {attributes:true,attributeFilter:['class','style','data-darkmode','data-theme','data-bs-theme']});
+});
+if (window.matchMedia) {
+  var pcThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+  if (pcThemeMedia.addEventListener) pcThemeMedia.addEventListener('change', syncPicoclawTheme);
+}
+
 var _origConfig = normalizeConfig(JSON.parse('<%=config_json_safe%>' || '{}'));
 var _initialModelList;
 var _curLang = localStorage.getItem('pc_lang') || 'zh';
@@ -1124,10 +1153,10 @@ function normalizeConfig(config) {
 function configField(path, label, type, choices) {
   var attr = ' data-path="' + escAttr(Array.isArray(path) ? JSON.stringify(path) : path) + '" data-type="' + type + '"';
   var input;
-  if (type === 'bool') input = '<label class="toggle"><input type="checkbox"' + attr + '><span class="slider"></span></label>';
+  if (type === 'bool') input = '<input class="pc-checkbox" type="checkbox" aria-label="' + escAttr(label) + '"' + attr + '>';
   else if (choices) input = '<select class="cfg-input cfg-input-sm"' + attr + '>' + choices.map(function(value) { return '<option value="' + escAttr(value) + '">' + escAttr(value || '默认') + '</option>'; }).join('') + '</select>';
   else if (type === 'array' || type === 'json') input = '<textarea class="cfg-input"' + attr + ' rows="2" placeholder="' + (type === 'array' ? '每行一个值' : 'JSON') + '"></textarea>';
-  else input = '<input class="cfg-input cfg-input-sm" type="' + (type === 'number' || type === 'float' ? 'number' : type === 'password' ? 'password' : 'text') + '"' + (type === 'float' ? ' step="any"' : '') + attr + '>';
+  else input = '<input class="cfg-input ' + (type === 'number' || type === 'float' ? 'cfg-input-number' : 'cfg-input-text') + '" type="' + (type === 'number' || type === 'float' ? 'number' : type === 'password' ? 'password' : 'text') + '"' + (type === 'float' ? ' step="any"' : '') + attr + '>';
   return '<div class="cfg-row"><div class="cfg-label">' + escAttr(label) + '</div><div class="cfg-field">' + input + '</div></div>';
 }
 
@@ -1146,7 +1175,7 @@ function buildChannelsList() {
     if (!ch.config) return;
     html += '<div class="ch-row"><span class="ch-name">' + escAttr(ch.name) + ' (' + escAttr(I('ch_' + ch.type, ch.type)) + ')</span><span class="badge ' + (ch.config.enabled ? 'badge-on' : 'badge-off') + '">' + I(ch.config.enabled ? 'enabled' : 'disabled') + '</span></div>';
   });
-  document.getElementById('channels-list').innerHTML = html || '<div style="padding:20px;text-align:center;color:#888">' + I('no_channels') + '</div>';
+  document.getElementById('channels-list').innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--pc-muted)">' + I('no_channels') + '</div>';
 }
 
 function buildChannelsForm() {
@@ -1488,7 +1517,7 @@ function addModelRow(model_name, model, api_base, api_key, enabled, original) {
   var tr = document.createElement('tr');
   tr.setAttribute('data-model-row', idx);
   tr._modelOriginal = JSON.parse(JSON.stringify(original || {}));
-  tr.style.cssText = 'background:#fafbfc';
+  tr.style.cssText = 'background:var(--pc-field)';
   tr.innerHTML =
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="model_name" value="' + escAttr(model_name) + '" placeholder="e.g. glm-4.5-air" style="width:100%;box-sizing:border-box;font-size:12px"></td>' +
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="model" value="' + escAttr(model || '') + '" placeholder="provider/model" style="width:100%;box-sizing:border-box;font-size:12px"></td>' +
@@ -1496,8 +1525,8 @@ function addModelRow(model_name, model, api_base, api_key, enabled, original) {
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="provider" value="' + escAttr((original || {}).provider || '') + '" placeholder="自动识别" style="width:100%"></td>' +
     '<td style="padding:4px"><textarea class="cfg-input" data-ml-field="api_keys" rows="2" placeholder="每行一个 API Key" style="width:100%">' + escAttr(api_key) + '</textarea></td>' +
     '<td style="padding:4px"><details><summary>JSON</summary><textarea class="cfg-input" data-ml-field="advanced" rows="5"></textarea></details></td>' +
-    '<td style="padding:4px;text-align:center"><input type="checkbox" data-ml-field="enabled"' + (enabled ? ' checked' : '') + '></td>' +
-    '<td style="padding:4px;text-align:center"><button type="button" onclick="this.closest(\'tr\').remove();refreshDefaultModelSelect();" style="border:none;background:#ffebee;color:#c62828;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:14px">&#215;</button></td>';
+    '<td style="padding:4px;text-align:center"><input class="pc-checkbox" type="checkbox" aria-label="' + escAttr(I('enabled')) + '" data-ml-field="enabled"' + (enabled ? ' checked' : '') + '></td>' +
+    '<td style="padding:4px;text-align:center"><button type="button" onclick="this.closest(\'tr\').remove();refreshDefaultModelSelect();" style="border:none;background:var(--pc-red-bg);color:var(--pc-red-text);cursor:pointer;border-radius:4px;padding:2px 8px;font-size:14px">&#215;</button></td>';
   var advanced = JSON.parse(JSON.stringify(original || {}));
   ['model_name','model','provider','api_base','api_keys','enabled'].forEach(function(key) { delete advanced[key]; });
   tr.querySelector('[data-ml-field="advanced"]').value = JSON.stringify(advanced, null, 2);
@@ -1658,7 +1687,6 @@ function loadFormFromJSON() {
   renderModelListTable();
   var select = document.getElementById('default-model-select');
   select._initialValue = select.value;
-  updateToggleLabels();
 }
 
 function loadJSONFromForm() {
@@ -1712,23 +1740,6 @@ function saveFormConfig() {
   } catch(e) { alert(I('json_error') + e.message); }
 }
 
-function updateToggleLabels() {
-  document.querySelectorAll('.toggle-wrap').forEach(function(wrap) {
-    var cb = wrap.querySelector('input[type="checkbox"]');
-    var lbl = wrap.querySelector('.toggle-label');
-    if (cb && lbl) {
-      lbl.classList.toggle('on', cb.checked);
-      lbl.classList.toggle('off', !cb.checked);
-    }
-  });
-}
-
-function bindToggles() {
-  document.querySelectorAll('#cfg-form-mode .toggle input[type="checkbox"]').forEach(function(cb) {
-    if (!cb._bound) { cb.addEventListener('change', updateToggleLabels); cb._bound = true; }
-  });
-}
-
 // ========== Init ==========
 function toggleSkillImport() {
   var el = document.getElementById('skill-import-form');
@@ -1770,47 +1781,47 @@ setLang(_curLang);
 
 <!-- WeChat Guide Card (bottom of page) -->
 <% if weixin_status == "none" then %>
-<div class="pc-card" style="border-color:#e3f2fd;background:#f8fbff">
+<div class="pc-card" style="border-color:var(--pc-blue-border);background:var(--pc-surface)">
   <h3 data-i18n="weixin_guide_title">&#128172; 微信个人号接入</h3>
-  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:#e3f2fd;border-radius:8px;margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--pc-blue-bg);border-radius:8px;margin-bottom:12px">
     <div style="font-size:28px;flex-shrink:0">&#128247;</div>
     <div style="flex:1">
-      <div style="font-size:14px;font-weight:600;color:#1565c0" data-i18n="weixin_not_connected">尚未接入微信</div>
-      <div style="font-size:12px;color:#1976d2;margin-top:3px;line-height:1.5">
-        通过 <code style="background:#bbdefb;padding:1px 5px;border-radius:3px;font-size:11px">picoclaw auth weixin</code> 命令扫码授权后，即可通过微信个人号与 AI 助手对话
+      <div style="font-size:14px;font-weight:600;color:var(--pc-blue-text)" data-i18n="weixin_not_connected">尚未接入微信</div>
+      <div style="font-size:12px;color:var(--pc-link);margin-top:3px;line-height:1.5">
+        通过 <code style="background:var(--pc-blue-bg);padding:1px 5px;border-radius:3px;font-size:11px">picoclaw auth weixin</code> 命令扫码授权后，即可通过微信个人号与 AI 助手对话
       </div>
     </div>
   </div>
-  <div style="font-size:13px;color:#555;line-height:1.8">
+  <div style="font-size:13px;color:var(--pc-secondary);line-height:1.8">
     <div style="margin-bottom:8px"><strong>接入步骤：</strong></div>
-    <div style="background:#fff;border-radius:6px;padding:12px 16px;border:1px solid #bbdefb">
+    <div style="background:var(--pc-surface);border-radius:6px;padding:12px 16px;border:1px solid var(--pc-blue-border)">
       <div style="margin-bottom:6px">&#10102; SSH 登录路由器</div>
-      <div style="margin-bottom:6px">&#10103; 执行命令：<code style="background:#e8eaf6;padding:2px 8px;border-radius:4px">picoclaw auth weixin</code></div>
+      <div style="margin-bottom:6px">&#10103; 执行命令：<code style="background:var(--pc-code);padding:2px 8px;border-radius:4px">picoclaw auth weixin</code></div>
       <div style="margin-bottom:6px">&#10104; 用微信扫描终端显示的二维码</div>
       <div style="margin-bottom:6px">&#10105; 授权成功后，回到此处开启通道即可</div>
     </div>
   </div>
 </div>
 <% elseif weixin_status == "configured" then %>
-<div class="pc-card" style="border-color:#fff3e0;background:#fffbf5">
+<div class="pc-card" style="border-color:var(--pc-orange-text);background:var(--pc-surface)">
   <h3 data-i18n="weixin_guide_title">&#128172; 微信个人号接入</h3>
-  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:#fff3e0;border-radius:8px">
+  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--pc-orange-bg);border-radius:8px">
     <div style="font-size:28px;flex-shrink:0">&#9989;</div>
     <div style="flex:1">
-      <div style="font-size:14px;font-weight:600;color:#e65100" data-i18n="weixin_authorized_not_enabled">已授权，但通道未启用</div>
-      <div style="font-size:12px;color:#ef6c00;margin-top:3px">微信扫码授权已完成，请到「配置编辑 → 通道管理」中开启微信通道</div>
+      <div style="font-size:14px;font-weight:600;color:var(--pc-orange-text)" data-i18n="weixin_authorized_not_enabled">已授权，但通道未启用</div>
+      <div style="font-size:12px;color:var(--pc-orange-text);margin-top:3px">微信扫码授权已完成，请到「配置编辑 → 通道管理」中开启微信通道</div>
     </div>
     <button class="pc-btn green" onclick="switchTab('config',document.querySelectorAll('.pc-tab')[2]); setTimeout(function(){ document.getElementById('channels-form-body').scrollIntoView({behavior:'smooth'}); },100)" data-i18n="weixin_go_enable">前往启用</button>
   </div>
 </div>
 <% elseif weixin_status == "connected" then %>
-<div class="pc-card" style="border-color:#e8f5e9;background:#f8fff8">
+<div class="pc-card" style="border-color:var(--pc-green-border);background:var(--pc-surface)">
   <h3 data-i18n="weixin_guide_title">&#128172; 微信个人号接入</h3>
-  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:#e8f5e9;border-radius:8px">
+  <div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--pc-green-bg);border-radius:8px">
     <div style="font-size:28px;flex-shrink:0">&#128994;</div>
     <div style="flex:1">
-      <div style="font-size:14px;font-weight:600;color:#2e7d32" data-i18n="weixin_connected">微信已连接</div>
-      <div style="font-size:12px;color:#43a047;margin-top:3px">微信个人号通道已启用，可以直接通过微信与 AI 助手对话</div>
+      <div style="font-size:14px;font-weight:600;color:var(--pc-green-text)" data-i18n="weixin_connected">微信已连接</div>
+      <div style="font-size:12px;color:var(--pc-green-text);margin-top:3px">微信个人号通道已启用，可以直接通过微信与 AI 助手对话</div>
     </div>
   </div>
 </div>
