@@ -29,11 +29,25 @@
 
 **[PicoClaw](https://github.com/sipeed/picoclaw)** 是一个运行在路由器上的 AI 助手程序，它可以让你的路由器接入大语言模型（如智谱 GLM、DeepSeek、ChatGPT 等），并通过飞书、Telegram、Discord、微信等通道与你对话。
 
-但 PicoClaw 本身没有图形界面，只能通过命令行或手动编辑 JSON 文件来配置，对普通用户不太友好。
+本插件直接管理 PicoClaw 核心 CLI 和 gateway，提供适用于 OpenWrt 的 LuCI 配置界面，不依赖 `picoclaw-launcher`。
 
 **本项目就是给 PicoClaw 加一个网页管理界面**（LuCI 插件），让你在浏览器里就能完成所有操作——启动服务、切换模型、配置 API Key、管理搜索引擎等，不需要敲命令行。
 
 > **LuCI** 是 OpenWrt 路由器的 Web 管理界面框架，你平时进路由器后台（如 192.168.1.1）看到的就是 LuCI。
+
+## dev 分支更新
+
+相对 `master`（`ae324cf`，v1.1.6），`dev` 已完成以下修改：
+
+- **配置兼容**：按 PicoClaw `bbf6893c` 的配置版本 3 核对表单。模型密钥统一在 `model_list[].api_keys` 配置，支持多 Key、同名模型和高级 JSON；删除旧提供商密钥区及页面内的 AI 模型配置指南。
+- **通道与工具**：支持按 `type` 配置具名通道实例；修正网关、心跳分钟单位、媒体清理、会话作用域和搜索引擎密钥格式。技能和记忆操作跟随自定义工作目录。
+- **保存行为**：保留未编辑字段、密钥占位符和高级模型参数，正确保存数字、布尔值、数组与 JSON，不再自动覆盖模型 Token 上限。详细字段变化见 [配置兼容性说明](docs/config-compatibility.zh.md)。
+- **网页对话**：过滤终端 ANSI 色码、ASCII 横幅及启动输出；使用独立会话。清空对话会删除网页历史和临时任务结果，并更换会话，避免旧回复重新出现；核心保存的历史会话归档仍保留。
+- **服务管理**：通过 rc.common/procd 停止服务，修复直接杀进程后被 respawn 拉起的问题。开机自启通过 `enable` / `disable` 管理，不修改 PicoClaw JSON 配置；关闭自启不会停止当前服务。
+- **界面**：内容区最大宽度由 960px 调整为 1200px，文字输入框最多 480px，适配窄屏和深色主题；滑块统一改为复选框，移除顶部图标、标题及副标题。
+- **源码与打包**：只保留 `istore/luci-app-picoclaw` 作为 LuCI 包源码，删除 `luci/` 和 `istore/luasrc/` 历史副本，并修正安装脚本引用。新增核心包、SDK 三包流水线和真正的 APKv3 本地打包。
+
+配置表单对照的新源码版本与 SDK 核心包版本不同：`picoclaw/Makefile` 当前仍固定为 **PicoClaw 0.3.1**。本地独立前端包版本为 **1.1.6-r7**，SDK LuCI 包版本为 **1.1.6-r1**。
 
 ## 📸 截图
 
@@ -60,20 +74,23 @@
 | | 说明 |
 |---|---|
 | **路由器系统** | OpenWrt 21.02+ 或 iStoreOS（需有 LuCI 界面） |
-| **PicoClaw 主程序** | 必须先安装 — 本插件只是网页管理界面，不包含 PicoClaw 本体 |
+| **PicoClaw 主程序** | 独立前端 APK 需另装核心；SDK 三包安装会带入核心包 |
 | **路由器架构** | 不限（纯 Lua，所有架构通用） |
 
 ## 🚀 安装
 
 ### GitHub Actions 编译 APK
 
-仓库提供 `.github/workflows/release-openwrt.yml`。推送代码后，在 GitHub
-**Actions → Release OpenWrt packages → Run workflow** 中填写发布标签，
+仓库提供 `.github/workflows/release-openwrt.yml`。推送到 **dev** 分支会自动编译，
+生成的包在该次 Actions 运行的 **Artifacts** 下载，保留 14 天。自动构建不发布 Release。
+
+需要发布时，在 GitHub **Actions → Release OpenWrt packages → Run workflow**
+选择分支并填写发布标签，
 例如 `v1.1.6-apk.1`，并选择是否标记为预发布。
 
 流水线使用 OpenWrt 25.12.5 SDK，分别编译 `x86_64`、`aarch64_cortex-a53`、
 `aarch64_cortex-a72`、`aarch64_generic`、`arm_cortex-a7` 和 `arm_cortex-a9`。
-每种架构上传以下三个 APK 和 SHA256 校验文件到 Actions artifacts；全部成功后发布到 GitHub Release：
+每种架构上传以下三个 APK 和 SHA256 校验文件到 Actions artifacts；手动触发时，全部成功后发布到 GitHub Release：
 
 - `picoclaw`：PicoClaw 0.3.1 核心及 procd 服务，不包含 launcher。
 - `luci-app-picoclaw`：LuCI 管理界面及三个 OpenWrt 预设技能，依赖 `picoclaw`。
@@ -89,6 +106,47 @@ apk add --allow-untrusted ./picoclaw-*.apk ./luci-app-picoclaw-*.apk ./luci-i18n
 PicoClaw 源码版本与 SHA256 固定在 `picoclaw/Makefile`；升级时必须同时更新版本和校验值。
 LuCI 源码包位于 `istore/luci-app-picoclaw`，中文翻译位于其 `po/zh_Hans` 目录。
 将本仓库加入 `feeds.conf.default` 后，也可选择 `luci-app-picoclaw` 随固件构建，依赖会带入核心包。
+
+### 本地打包独立前端 APK
+
+需要支持 `mkpkg` 的 apk-tools 3.x。运行：
+
+```sh
+APK="$HOME/.local/bin/apk.static" ./scripts/build-apk-25xx.sh
+```
+
+默认生成 `release/luci-app-picoclaw-1.1.6-r7.apk`。可通过 `PKG_VERSION` 覆盖版本号，
+或传入输出目录。该包包含 LuCI controller、view、启动脚本和缓存清理钩子，
+不包含核心二进制、launcher、技能文件或独立中文翻译包；界面内置中文及其他语言。
+需要自行提供 `/usr/bin/picoclaw`。
+
+```sh
+apk add --allow-untrusted /tmp/luci-app-picoclaw-1.1.6-r7.apk
+```
+
+若路由器已经安装同版本 r7，需要重新安装才能应用重打包后的改动。
+独立前端包自带 `/etc/init.d/picoclaw`，不能与同样拥有该文件的 SDK 核心包混装。
+SDK 三包适合成套安装，独立前端包适合已有手动安装核心二进制的设备。
+
+### 编译到固件
+
+在 OpenWrt 源码的 `feeds.conf.default` 中添加：
+
+```text
+src-git picoclaw https://github.com/altman08/luci-app-picoclaw.git;dev
+```
+
+更新并安装 feed 后，选择 `luci-app-picoclaw` 和中文语言包，`picoclaw` 核心由依赖带入：
+
+```sh
+./scripts/feeds update picoclaw
+./scripts/feeds install -p picoclaw luci-app-picoclaw picoclaw
+make menuconfig
+```
+
+构建环境还需提供标准 LuCI 和 packages/golang feed；实际核心架构支持由 golang feed 决定。
+
+以下是原版 IPK/iStore 安装方式，适用于使用 opkg 的旧版系统，不适用于上述独立 APK。
 
 ### 第一步：安装 PicoClaw 主程序
 
@@ -140,7 +198,7 @@ PicoClaw 需要接入大语言模型才能工作。你可以把它理解为一�
 > - [DeepSeek](https://platform.deepseek.com/) — 国内，注册送免费额度
 > - [OpenRouter](https://openrouter.ai/) — 海外，聚合多家模型
 
-> 🔒 API Key 通过 PicoClaw 双文件安全体系存储（`config.json` 只存占位符，真实密钥在 `.security.yml` 中），不会明文暴露。
+模型 Key 在模型列表中填写，多把 Key 每行一个。`[NOT_HERE]` 表示由 PicoClaw 的 `.security.yml` 管理的密钥，未编辑时原样保留。LuCI 保存时直接写入 `config.json`，不负责把新填的明文密钥迁移到 `.security.yml`。
 
 ## 🔍 搜索引擎
 

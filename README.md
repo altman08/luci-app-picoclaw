@@ -29,11 +29,25 @@
 
 **[PicoClaw](https://github.com/sipeed/picoclaw)** is an AI assistant that runs on your router. It connects to large language models (like ChatGPT, DeepSeek, GLM, etc.) and lets you chat via Feishu, Telegram, Discord, WeChat, and more.
 
-However, PicoClaw itself has no graphical interface — you have to configure it via command line or by manually editing JSON files.
+This plugin manages the core CLI and gateway through LuCI, without requiring `picoclaw-launcher`.
 
 **This project adds a web management interface** (a LuCI plugin) for PicoClaw, so you can do everything in your browser: start/stop the service, switch AI models, configure API keys, manage search engines, and more — no command line needed.
 
 > **LuCI** is the web interface framework used by OpenWrt routers. When you open your router's admin page (e.g. 192.168.1.1), that's LuCI.
+
+## Changes on dev
+
+Compared with `master` (`ae324cf`, v1.1.6), `dev` includes:
+
+- **Configuration compatibility**: forms checked against PicoClaw config version 3 at `bbf6893c`; model credentials belong to `model_list[].api_keys`. Multiple keys, duplicate model aliases and advanced model JSON are preserved. The legacy providers section and in-page model guide have been removed.
+- **Channels and tools**: named channel instances use their `type`; gateway fields, heartbeat minutes, media cleanup, session scope and search credentials follow the current schema. Skills and memory operations respect the configured workspace.
+- **Saving**: untouched fields, credential placeholders and advanced parameters are preserved; numbers, booleans, arrays and JSON retain their types. Selecting a model no longer overwrites its token limit. See the [configuration compatibility notes (Chinese)](docs/config-compatibility.zh.md).
+- **Chat**: terminal colors, banners and startup output are filtered. Web chat uses an isolated session; clearing removes its displayed history and temporary results, rotates the session and rejects late replies. Archived core sessions remain on disk.
+- **Services**: rc.common/procd manages stopping, fixing the respawn race caused by killing the process directly. Boot autostart uses `enable` / `disable`, without editing PicoClaw JSON; disabling autostart does not stop a running service.
+- **UI**: up to 1200px of content width and 480px text inputs, narrow-screen layouts, dark theme support and native checkboxes. The top icon, title and subtitle have been removed.
+- **Packaging**: `istore/luci-app-picoclaw` is the sole LuCI package source; obsolete `luci/` and `istore/luasrc/` copies were removed and installer paths updated. Core packaging, three-package SDK builds and standalone APKv3 builds are provided.
+
+The form schema and packaged core have separate version pins: `picoclaw/Makefile` still builds **PicoClaw 0.3.1**. The standalone frontend is **1.1.6-r7**; the SDK LuCI package is **1.1.6-r1**.
 
 ## 📸 Screenshots
 
@@ -60,10 +74,52 @@ However, PicoClaw itself has no graphical interface — you have to configure it
 | | Details |
 |---|---|
 | **Router OS** | OpenWrt 21.02+ or iStoreOS (with LuCI interface) |
-| **PicoClaw binary** | Must be installed first — this plugin is only the web UI, not PicoClaw itself |
+| **PicoClaw binary** | Standalone APK requires a separate binary; SDK packages include a core dependency |
 | **Architecture** | Any (pure Lua, works on all architectures) |
 
 ## 🚀 Installation
+
+### GitHub Actions APK builds
+
+Pushing to **dev** triggers `.github/workflows/release-openwrt.yml`. Download packages from the run's **Artifacts** (retained for 14 days). Push builds do not publish a Release.
+
+For a release, use **Actions → Release OpenWrt packages → Run workflow**, select a branch, enter a tag and choose whether it is a prerelease. The workflow uses OpenWrt 25.12.5 SDKs for `x86_64`, `aarch64_cortex-a53`, `aarch64_cortex-a72`, `aarch64_generic`, `arm_cortex-a7` and `arm_cortex-a9`. Each build produces:
+
+- `picoclaw`: core 0.3.1 binary and procd init script, without a launcher.
+- `luci-app-picoclaw`: LuCI frontend and three preset skills, depending on the core package.
+- `luci-i18n-picoclaw-zh-cn`: Simplified Chinese translations.
+
+Files include SDK and architecture suffixes and SHA256 checksums. Install the three packages matching your firmware together with `apk add --allow-untrusted`.
+
+### Standalone frontend APK
+
+Use apk-tools 3.x with the `mkpkg` applet:
+
+```sh
+APK="$HOME/.local/bin/apk.static" ./scripts/build-apk-25xx.sh
+```
+
+The default output is `release/luci-app-picoclaw-1.1.6-r7.apk`. Override `PKG_VERSION` or pass an output directory as needed. This package contains the controller, view, init script and cache-clearing hooks. It requires a separately installed `/usr/bin/picoclaw`; it does not bundle the binary, launcher, skills or a separate translation package. The interface includes its own language strings.
+
+Upload it to `/tmp` and install:
+
+```sh
+apk add --allow-untrusted /tmp/luci-app-picoclaw-1.1.6-r7.apk
+```
+
+Reinstall if the same r7 version is already installed. This standalone package owns `/etc/init.d/picoclaw` and conflicts with SDK core packages that own the same file.
+
+### Firmware builds
+
+Add this repository to `feeds.conf.default`:
+
+```text
+src-git picoclaw https://github.com/altman08/luci-app-picoclaw.git;dev
+```
+
+Update the feed, install its `luci-app-picoclaw` and `picoclaw` entries, and select the frontend and Chinese translations in `make menuconfig`. The core is selected through dependencies. Standard LuCI and packages/golang feeds are required. LuCI sources live in `istore/luci-app-picoclaw`; translations use `po/zh_Hans`.
+
+The following legacy IPK/iStore instructions apply to older opkg systems, rather than the standalone APK above.
 
 ### Step 1: Install PicoClaw
 
@@ -115,7 +171,7 @@ PicoClaw needs to connect to a large language model to work. Think of it as a "c
 > - [DeepSeek](https://platform.deepseek.com/) — China-based, free credits on signup
 > - [OpenRouter](https://openrouter.ai/) — Aggregates multiple models
 
-> 🔒 API keys are stored securely via PicoClaw's dual-file system (`config.json` stores only a placeholder, actual keys are in `.security.yml`), never exposed in plaintext.
+Enter model credentials in the model list, one key per line. Untouched `[NOT_HERE]` placeholders reference credentials managed by PicoClaw in `.security.yml`. LuCI writes configuration directly to `config.json`; it does not move newly entered plaintext credentials into `.security.yml`.
 
 ## 🔍 Search Engine
 
