@@ -198,7 +198,7 @@ PicoClaw 需要接入大语言模型才能工作。你可以把它理解为一�
 > - [DeepSeek](https://platform.deepseek.com/) — 国内，注册送免费额度
 > - [OpenRouter](https://openrouter.ai/) — 海外，聚合多家模型
 
-模型 Key 在模型列表中填写，多把 Key 每行一个。`[NOT_HERE]` 表示由 PicoClaw 的 `.security.yml` 管理的密钥，未编辑时原样保留。LuCI 保存时直接写入 `config.json`，不负责把新填的明文密钥迁移到 `.security.yml`。
+模型 Key 在模型列表中填写，多把 Key 用逗号分隔。`[NOT_HERE]` 表示由 PicoClaw 的 `.security.yml` 管理的密钥，未编辑时原样保留。LuCI 保存时直接写入 `config.json`，不负责把新填的明文密钥迁移到 `.security.yml`。
 
 ## 🔍 搜索引擎
 

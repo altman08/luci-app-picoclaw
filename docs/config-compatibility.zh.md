@@ -11,7 +11,7 @@
 | `providers.*.api_key/base_url` | 凭据和地址属于 `model_list` 条目；不再生成旧 providers 表单 |
 | 通道名固定等于类型 | 按 `channel_list` 的实例名读取，以 `type` 选择设置字段，支持多个同类型实例 |
 | 旧 `channels` 扁平字段 | `channel_list.<实例名>.settings`；共同字段留在实例顶层 |
-| 模型只显示第一把 Key，保存重建条目 | 多 Key 每行一个；逐行保留原条目，同名模型、占位符和高级参数不会因普通保存丢失 |
+| 模型只显示第一把 Key，保存重建条目 | 多 Key 用逗号分隔；逐行保留原条目，同名模型、占位符和高级参数不会因普通保存丢失 |
 | 搜索密钥全部用同一种格式 | Brave/Tavily/Kagi/Perplexity 使用 `api_keys`；Gemini/GLM/百度使用 `api_key` |
 | 表单保存补入空字段、将数字转成字符串 | 只提交有变化的字段，整数、浮点数、布尔值、数组和 JSON 保持正确类型 |
 | 切换模型时自动替换 Token 上限 | 保留用户配置的 Token 上限，不用静态模型推荐值覆盖 |

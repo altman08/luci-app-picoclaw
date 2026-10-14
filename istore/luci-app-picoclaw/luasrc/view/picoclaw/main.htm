@@ -3,7 +3,10 @@
 :root{--pc-surface:#fff;--pc-soft:#f8f9fa;--pc-field:#fafbfc;--pc-hover:#eef1f6;--pc-head:#f5f7fa;--pc-muted-bg:#f0f0f0;--pc-border:#e0e0e0;--pc-line:#f0f0f0;--pc-text:#333;--pc-secondary:#555;--pc-muted:#888;--pc-faint:#999;--pc-link:#1976d2;--pc-blue-text:#1565c0;--pc-blue-bg:#e3f2fd;--pc-green-bg:#e8f5e9;--pc-green-text:#2e7d32;--pc-red-bg:#ffebee;--pc-red-text:#c62828;--pc-orange-bg:#fff3e0;--pc-orange-text:#e65100;--pc-code:#e8eaf6;--pc-green-border:#c8e6c9;--pc-red-border:#ffcdd2;--pc-blue-border:#bbdefb;--pc-log-bg:#1e1e1e;--pc-log-text:#d4d4d4;--pc-disabled:#bbb;--pc-color-scheme:light}
 :root.pc-dark,:root[data-darkmode="true"],:root[data-theme="dark"],:root[data-bs-theme="dark"]{--pc-surface:#20242c;--pc-soft:#282e38;--pc-field:#252b34;--pc-hover:#343d49;--pc-head:#2b323d;--pc-muted-bg:#343b46;--pc-border:#424b59;--pc-line:#353d49;--pc-text:#e5e9f0;--pc-secondary:#c2cad6;--pc-muted:#a5afbe;--pc-faint:#a0aabb;--pc-link:#82bcff;--pc-blue-text:#9ccaff;--pc-blue-bg:#203a54;--pc-green-bg:#203d2d;--pc-green-text:#91d7a6;--pc-red-bg:#4b2930;--pc-red-text:#ffacb3;--pc-orange-bg:#483921;--pc-orange-text:#ffc27c;--pc-code:#353950;--pc-green-border:#3e6b4b;--pc-red-border:#7d424b;--pc-blue-border:#456a91;--pc-log-bg:#151920;--pc-log-text:#d4d4d4;--pc-disabled:#7a8799;--pc-color-scheme:dark}
 .pc,.pc-card{color:var(--pc-text);color-scheme:var(--pc-color-scheme)}
-.pc h2,.pc h3{background:transparent;box-shadow:none}
+.pc h2,.pc h3{width:auto;padding:0;background:transparent;box-shadow:none}
+.pc button{box-sizing:border-box;width:auto;height:auto;min-height:0;max-width:none;line-height:1.4;white-space:nowrap;flex-shrink:0}
+.pc .chat-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.pc .chat-header h3{flex:1;min-width:0;margin:0;line-height:1.4 !important}
 .pc .cfg-input,.pc .pc-editor,.pc .chat-input{color:var(--pc-text);background:var(--pc-field)}
 .pc input::placeholder,.pc textarea::placeholder{color:var(--pc-faint);opacity:1}
 
@@ -294,7 +297,7 @@ if flash_msg ~= "" then
 
   <!-- Chat Panel -->
   <div class="pc-panel" id="panel-chat" style="padding:16px 24px 24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div class="chat-header">
       <h3 data-i18n="chat_title" style="margin:0;font-size:16px">&#128172; <span data-i18n="chat_title_text">与 PicoClaw 对话</span></h3>
       <button class="chat-clear" onclick="clearChat()" data-i18n="chat_clear">&#128465; 清空对话</button>
     </div>
@@ -1153,9 +1156,11 @@ function normalizeConfig(config) {
 function configField(path, label, type, choices) {
   var attr = ' data-path="' + escAttr(Array.isArray(path) ? JSON.stringify(path) : path) + '" data-type="' + type + '"';
   var input;
+  var isAPIKeys = (Array.isArray(path) ? path[path.length-1] : path.split('.').pop()) === 'api_keys';
   if (type === 'bool') input = '<input class="pc-checkbox" type="checkbox" aria-label="' + escAttr(label) + '"' + attr + '>';
   else if (choices) input = '<select class="cfg-input cfg-input-sm"' + attr + '>' + choices.map(function(value) { return '<option value="' + escAttr(value) + '">' + escAttr(value || '默认') + '</option>'; }).join('') + '</select>';
-  else if (type === 'array' || type === 'json') input = '<textarea class="cfg-input"' + attr + ' rows="2" placeholder="' + (type === 'array' ? '每行一个值' : 'JSON') + '"></textarea>';
+  else if (isAPIKeys) input = '<input class="cfg-input pc-api-keys" type="text"' + attr + ' placeholder="多把 Key 用逗号分隔" autocomplete="off" spellcheck="false">';
+  else if (type === 'array' || type === 'json') input = '<textarea class="cfg-input' + (isAPIKeys ? ' pc-api-keys' : '') + '" wrap="soft"' + attr + ' rows="2" placeholder="' + (type === 'array' ? '每行一个值' : 'JSON') + '"></textarea>';
   else input = '<input class="cfg-input ' + (type === 'number' || type === 'float' ? 'cfg-input-number' : 'cfg-input-text') + '" type="' + (type === 'number' || type === 'float' ? 'number' : type === 'password' ? 'password' : 'text') + '"' + (type === 'float' ? ' step="any"' : '') + attr + '>';
   return '<div class="cfg-row"><div class="cfg-label">' + escAttr(label) + '</div><div class="cfg-field">' + input + '</div></div>';
 }
@@ -1523,7 +1528,7 @@ function addModelRow(model_name, model, api_base, api_key, enabled, original) {
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="model" value="' + escAttr(model || '') + '" placeholder="provider/model" style="width:100%;box-sizing:border-box;font-size:12px"></td>' +
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="api_base" value="' + escAttr(api_base) + '" placeholder="https://..." style="width:100%;box-sizing:border-box;font-size:12px"></td>' +
     '<td style="padding:4px"><input class="cfg-input" data-ml-field="provider" value="' + escAttr((original || {}).provider || '') + '" placeholder="自动识别" style="width:100%"></td>' +
-    '<td style="padding:4px"><textarea class="cfg-input" data-ml-field="api_keys" rows="2" placeholder="每行一个 API Key" style="width:100%">' + escAttr(api_key) + '</textarea></td>' +
+    '<td style="padding:4px"><input class="cfg-input pc-api-keys" type="text" data-ml-field="api_keys" placeholder="多把 Key 用逗号分隔" autocomplete="off" spellcheck="false" style="width:100%" value="' + escAttr(api_key) + '"></td>' +
     '<td style="padding:4px"><details><summary>JSON</summary><textarea class="cfg-input" data-ml-field="advanced" rows="5"></textarea></details></td>' +
     '<td style="padding:4px;text-align:center"><input class="pc-checkbox" type="checkbox" aria-label="' + escAttr(I('enabled')) + '" data-ml-field="enabled"' + (enabled ? ' checked' : '') + '></td>' +
     '<td style="padding:4px;text-align:center"><button type="button" onclick="this.closest(\'tr\').remove();refreshDefaultModelSelect();" style="border:none;background:var(--pc-red-bg);color:var(--pc-red-text);cursor:pointer;border-radius:4px;padding:2px 8px;font-size:14px">&#215;</button></td>';
@@ -1555,7 +1560,7 @@ function renderModelListTable() {
   window.refreshDefaultModelSelect = function() {}; // no-op during batch
   for (var i = 0; i < ml.length; i++) {
     var m = ml[i] || {};
-    var keyStr = Array.isArray(m.api_keys) ? m.api_keys.join('\n') : typeof m.api_keys === 'string' ? m.api_keys : '';
+    var keyStr = Array.isArray(m.api_keys) ? m.api_keys.join(', ') : typeof m.api_keys === 'string' ? m.api_keys : '';
     addModelRow(m.model_name || '', m.model || '', m.api_base || '', keyStr, m.enabled === true || (m.enabled === undefined && (m.model_name === 'local-model' || m.auth_method === 'oauth' || m.api_keys === '[NOT_HERE]' || (Array.isArray(m.api_keys) && m.api_keys.length > 0))), m);
   }
   // Restore and call refreshDefaultModelSelect once after all rows are added
@@ -1581,7 +1586,7 @@ function collectModelList() {
       if (key === 'advanced') return;
       var value = el.type === 'checkbox' ? el.checked : el.value.trim();
       if (value === el._initialValue && Object.keys(tr._modelOriginal).length) return;
-      if (key === 'api_keys') entry[key] = value ? value.split(/\r?\n/).map(function(k) { return k.trim(); }).filter(Boolean) : [];
+      if (key === 'api_keys') entry[key] = value ? value.split(/[,，\r\n]+/).map(function(k) { return k.trim(); }).filter(Boolean) : [];
       else entry[key] = value;
     });
     list.push(entry);
@@ -1670,6 +1675,7 @@ function loadFormFromJSON() {
     var path = el.getAttribute('data-path');
     var configured = getByPath(_origConfig, path);
     var val = fieldDisplay(configured === undefined ? CONFIG_DEFAULTS[path] : configured, el.getAttribute('data-type'));
+    if (el.classList.contains('pc-api-keys') && Array.isArray(configured)) val = configured.join(', ');
     if (path === 'session.dm_scope' && configured === undefined) {
       var dimensions = getByPath(_origConfig, 'session.dimensions');
       var scopes = {'["chat","sender"]':'per-channel-peer','["chat"]':'per-channel','["sender"]':'per-peer','[]':'global'};
@@ -1707,7 +1713,7 @@ function collectFormValues(obj) {
         value = Number(value);
         if (!Number.isFinite(value) || (type === 'number' && !Number.isInteger(value))) throw new Error(path + ': 无效数字');
       }
-    } else if (type === 'array') value = value ? value.split(/\r?\n/).map(function(v) { return v.trim(); }).filter(Boolean) : [];
+    } else if (type === 'array') value = value ? value.split(el.classList.contains('pc-api-keys') ? /[,，\r\n]+/ : /\r?\n/).map(function(v) { return v.trim(); }).filter(Boolean) : [];
     else if (type === 'json') value = value ? JSON.parse(value) : null;
     setByPath(obj, path, value);
     var parts = path.charAt(0) === '[' ? JSON.parse(path) : path.split('.');

@@ -171,7 +171,7 @@ PicoClaw needs to connect to a large language model to work. Think of it as a "c
 > - [DeepSeek](https://platform.deepseek.com/) — China-based, free credits on signup
 > - [OpenRouter](https://openrouter.ai/) — Aggregates multiple models
 
-Enter model credentials in the model list, one key per line. Untouched `[NOT_HERE]` placeholders reference credentials managed by PicoClaw in `.security.yml`. LuCI writes configuration directly to `config.json`; it does not move newly entered plaintext credentials into `.security.yml`.
+Enter model credentials in the model list, multiple keys separated by commas. Untouched `[NOT_HERE]` placeholders reference credentials managed by PicoClaw in `.security.yml`. LuCI writes configuration directly to `config.json`; it does not move newly entered plaintext credentials into `.security.yml`.
 
 ## 🔍 Search Engine
 
