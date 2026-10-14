@@ -26,6 +26,30 @@ function parse_json_file(filepath)
     return nil
 end
 
+-- Channel instance names may differ from their types in config version 3.
+function get_channels_by_type(cfg, channel_type)
+    local found = {}
+    if type(cfg) ~= "table" then return found end
+    local channels = cfg.channel_list or cfg.channels or {}
+    if type(channels) ~= "table" then return found end
+    for name, channel in pairs(channels) do
+        if type(channel) == "table" and (channel.type or name) == channel_type then
+            table.insert(found, {name = name, config = channel})
+        end
+    end
+    return found
+end
+
+function get_workspace_path(cfg)
+    cfg = cfg or parse_json_file("/root/.picoclaw/config.json") or {}
+    local defaults = type(cfg.agents) == "table" and cfg.agents.defaults or {}
+    local workspace = type(defaults) == "table" and defaults.workspace or nil
+    if type(workspace) ~= "string" or workspace == "" then return "/root/.picoclaw/workspace" end
+    if workspace == "~" then return "/root" end
+    if workspace:sub(1, 2) == "~/" then return "/root/" .. workspace:sub(3) end
+    return workspace
+end
+
 -- Check if PicoClaw binary is installed
 function is_picoclaw_installed()
     return nixio.fs.access("/usr/bin/picoclaw")
@@ -151,10 +175,12 @@ function get_status()
     if cfg then
         if cfg.gateway and cfg.gateway.port then
             actual_port = tonumber(cfg.gateway.port)
-        elseif cfg.channel_list and cfg.channel_list.maixcam and cfg.channel_list.maixcam.settings and cfg.channel_list.maixcam.settings.port then
-            actual_port = tonumber(cfg.channel_list.maixcam.settings.port)
-        elseif cfg.channels and cfg.channels.maixcam and cfg.channels.maixcam.port then
-            actual_port = tonumber(cfg.channels.maixcam.port)
+        else
+            local maixcam = get_channels_by_type(cfg, "maixcam")[1]
+            if maixcam then
+                local settings = maixcam.config.settings or maixcam.config
+                actual_port = tonumber(settings.port)
+            end
         end
     end
     -- Default fallback ports to check
@@ -324,7 +350,7 @@ function sync_workspace_memory(cfg)
     local new_model = defaults and defaults["model_name"]
     if not new_model or new_model == "" then return end
 
-    local ws_dir = "/root/.picoclaw/workspace"
+    local ws_dir = get_workspace_path(cfg)
     local changed = false
 
     -- Layer 1 & 2: Update memory .md files (replace old model name)
@@ -352,13 +378,12 @@ function sync_workspace_memory(cfg)
     -- (i.e., model name was different → stale conversation context exists)
     if changed then
         local sess_dir = ws_dir .. "/sessions"
-        -- Use ls glob instead of find for BusyBox compatibility & simplicity
-        local handle = io.popen("ls " .. sess_dir .. "/*.jsonl " .. sess_dir .. "/*.meta.json 2>/dev/null")
-        if handle then
-            for filepath in handle:lines() do
-                os.remove(filepath)
+        if nixio.fs.access(sess_dir) then
+            for name in nixio.fs.dir(sess_dir) do
+                if name:match("%.jsonl$") or name:match("%.meta%.json$") then
+                    os.remove(sess_dir .. "/" .. name)
+                end
             end
-            handle:close()
         end
     end
 end
@@ -827,11 +852,12 @@ function get_picoclaw_tools()
         end
     end
     -- Skills
-    local skill_dir = io.popen("ls /root/.picoclaw/workspace/skills/ 2>/dev/null")
+    local workspace = get_workspace_path()
+    local skill_dir = io.popen("ls " .. shell_quote(workspace .. "/skills/") .. " 2>/dev/null")
     if skill_dir then
         for name in skill_dir:lines() do
             local desc = ""
-            local f = io.open("/root/.picoclaw/workspace/skills/" .. name .. "/SKILL.md", "r")
+            local f = io.open(workspace .. "/skills/" .. name .. "/SKILL.md", "r")
             if f then
                 local content = f:read("*a")
                 f:close()
@@ -1159,8 +1185,8 @@ function action_do()
         if config ~= "" then
             -- Validate JSON before saving
             local valid, cfg_obj = pcall(jsonc.parse, config)
-            if not valid then
-                msg = "错误：JSON 格式无效"
+            if not valid or type(cfg_obj) ~= "table" or not config:match("^%s*{") then
+                msg = "错误：配置必须是有效的 JSON 对象"
                 ok = false
             else
                 local f = io.open("/root/.picoclaw/config.json", "w")
@@ -1247,7 +1273,7 @@ function action_do()
         if skill_name ~= "" then
             -- Sanitize: only allow alphanumeric, underscore, hyphen
             if skill_name:match("^[%w_%-]+$") then
-                local skill_path = "/root/.picoclaw/workspace/skills/" .. skill_name
+                local skill_path = get_workspace_path() .. "/skills/" .. skill_name
                 rmtree(skill_path)
                 -- Verify deleted
                 local check = io.open(skill_path .. "/SKILL.md", "r")
@@ -1264,8 +1290,8 @@ function action_do()
         local skill_content = http.formvalue("skill_content") or ""
         if skill_name ~= "" and skill_content ~= "" then
             if skill_name:match("^[%w_%-]+$") then
-                local skill_dir = "/root/.picoclaw/workspace/skills/" .. skill_name
-                sys.exec("mkdir -p '" .. skill_dir .. "'")
+                local skill_dir = get_workspace_path() .. "/skills/" .. skill_name
+                sys.exec("mkdir -p " .. shell_quote(skill_dir))
                 local f = io.open(skill_dir .. "/SKILL.md", "w")
                 if f then
                     f:write(skill_content)
@@ -1283,7 +1309,7 @@ function action_do()
     elseif action == "install_preset_skills" then
         -- Install built-in preset skills
         local preset_skills_dir = "/usr/lib/lua/luci/picoclaw-skills/"
-        local target_dir = "/root/.picoclaw/workspace/skills/"
+        local target_dir = get_workspace_path() .. "/skills/"
         local installed = {}
         local found = io.popen("ls '" .. preset_skills_dir .. "' 2>/dev/null")
         if found then
@@ -1295,7 +1321,7 @@ function action_do()
                     if src_f then
                         local content = src_f:read("*a")
                         src_f:close()
-                        sys.exec("mkdir -p '" .. target_dir .. name .. "'")
+                        sys.exec("mkdir -p " .. shell_quote(target_dir .. name))
                         local dst_f = io.open(target_dir .. name .. "/SKILL.md", "w")
                         if dst_f then
                             dst_f:write(content)
@@ -1367,48 +1393,24 @@ function action_main()
         pid_str = tostring(status.pid)
     end
 
-    -- Parse weixin status using proper JSON parser
-    -- v0.2.7+: channel_list.weixin.enabled + channel_list.weixin.settings.{base_url,...}
-    -- Older:    channels.weixin.enabled + channels.weixin.{base_url,...}
-    -- States: "none" = not authorized, "configured" = authorized but disabled, "connected" = enabled
-    -- Note: v0.2.7 creates default entries for ALL channels with enabled=false,
-    -- so mere existence of channel_list.weixin does NOT mean the user ran auth.
-    -- We check security.yml for weixin auth token to detect "configured" state.
     local weixin_status = "none"
     local weixin_configured = false
     local config = parse_json_file("/root/.picoclaw/config.json")
-    if config then
-        -- v0.2.7+: config.channel_list.weixin; older: config.channels.weixin
-        local channels = config.channel_list or config.channels or {}
-        local weixin = nil
-        if type(channels) == "table" then
-            weixin = channels.weixin
-        end
-        -- Also check top-level for backward compatibility
-        if not weixin or type(weixin) ~= "table" then
-            weixin = config.weixin
-        end
-        if weixin and type(weixin) == "table" then
-            if weixin.enabled == true then
-                weixin_status = "connected"
-                weixin_configured = true
-            else
-                -- Check if weixin has been authenticated by looking for auth data in security.yml
-                -- After `picoclaw auth weixin`, security.yml will have weixin.settings with token
-                local sec_file = io.open("/root/.picoclaw/.security.yml", "r")
-                if sec_file then
-                    local sec_content = sec_file:read("*a")
-                    sec_file:close()
-                    -- Look for weixin section in channel_list with non-empty settings
-                    -- Pattern: "weixin:\n    settings:\n      <key>: <value>" (not just "settings: {}")
-                    if sec_content:match("weixin:%s*\n%s+settings:%s*\n%s+%S")
-                       or sec_content:match("weixin:%s*\n%s+settings:%s*[^{}%s]")
-                    then
-                        weixin_status = "configured"
-                        weixin_configured = true
-                    end
-                end
-            end
+    local sec_file = io.open("/root/.picoclaw/.security.yml", "r")
+    local sec_content = ""
+    if sec_file then sec_content = sec_file:read("*a"); sec_file:close() end
+    for _, instance in ipairs(get_channels_by_type(config, "weixin")) do
+        local channel = instance.config
+        local settings = channel.settings or channel
+        local name_pattern = instance.name:gsub("([^%w])", "%%%1")
+        local authorized = type(settings.token) == "string" and settings.token ~= ""
+        authorized = authorized or sec_content:match(name_pattern .. ":%s*\n%s+settings:%s*\n%s+%S") ~= nil
+        if channel.enabled then
+            weixin_status = "connected"
+            weixin_configured = true
+        elseif authorized and weixin_status ~= "connected" then
+            weixin_status = "configured"
+            weixin_configured = true
         end
     end
 

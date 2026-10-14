@@ -17,12 +17,13 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # NOTE: The LuCI controller and view template are deployed from the actual files
-# in this repository (luci/controller/picoclaw.lua and luci/view/picoclaw/main.htm),
+# in this repository (istore/luci-app-picoclaw/luasrc/controller/picoclaw.lua and
+# istore/luci-app-picoclaw/luasrc/view/picoclaw/main.htm),
 # NOT from inline string literals. This ensures the deployed code always matches
 # the latest version in the repo.
 #
-# LuCI controller: luci/controller/picoclaw.lua
-# LuCI view template: luci/view/picoclaw/main.htm
+# LuCI controller: istore/luci-app-picoclaw/luasrc/controller/picoclaw.lua
+# LuCI view template: istore/luci-app-picoclaw/luasrc/view/picoclaw/main.htm
 
 
 def print_step(msg):
@@ -114,7 +115,8 @@ def main():
     # Step 3: init.d service
     print_step("Step 3/6: Create init.d Service")
     sftp = client.open_sftp()
-    initd_script = open(os.path.join(os.path.dirname(__file__), 'scripts', 'picoclaw.init'), 'r').read()
+    repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    initd_script = open(os.path.join(repo_dir, 'scripts', 'picoclaw.init'), 'r', encoding='utf-8').read()
     with sftp.open('/etc/init.d/picoclaw', 'w') as f:
         f.write(initd_script)
     print("  Written /etc/init.d/picoclaw")
@@ -124,16 +126,16 @@ def main():
     # Step 4: Deploy LuCI
     if has_luci.strip() == 'yes':
         print_step("Step 4/6: Deploy LuCI Interface")
-        controller_path = os.path.join(os.path.dirname(__file__), 'luci', 'controller', 'picoclaw.lua')
-        template_path = os.path.join(os.path.dirname(__file__), 'luci', 'view', 'picoclaw', 'main.htm')
+        controller_path = os.path.join(repo_dir, 'istore', 'luci-app-picoclaw', 'luasrc', 'controller', 'picoclaw.lua')
+        template_path = os.path.join(repo_dir, 'istore', 'luci-app-picoclaw', 'luasrc', 'view', 'picoclaw', 'main.htm')
 
         with sftp.open('/usr/lib/lua/luci/controller/picoclaw.lua', 'w') as f:
-            f.write(open(controller_path, 'r').read())
+            f.write(open(controller_path, 'r', encoding='utf-8').read())
         print("  Controller deployed")
 
         run("mkdir -p /usr/lib/lua/luci/view/picoclaw")
         with sftp.open('/usr/lib/lua/luci/view/picoclaw/main.htm', 'w') as f:
-            f.write(open(template_path, 'r').read())
+            f.write(open(template_path, 'r', encoding='utf-8').read())
         print("  Template deployed")
 
         run("rm -rf /tmp/luci-* 2>/dev/null")
