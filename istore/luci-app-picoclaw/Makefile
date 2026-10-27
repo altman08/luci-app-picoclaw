@@ -8,7 +8,7 @@ PKG_LICENSE:=MIT
 LUCI_TITLE:=LuCI support for PicoClaw AI Assistant
 LUCI_DESCRIPTION:=LuCI web interface for managing PicoClaw service, channels, config, hardware, skills and cron jobs.
 LUCI_PKGARCH:=all
-LUCI_DEPENDS:=+luci-compat +luci-lib-jsonc +curl +picoclaw
+LUCI_DEPENDS:=+luci-compat +luci-lib-jsonc +curl
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
