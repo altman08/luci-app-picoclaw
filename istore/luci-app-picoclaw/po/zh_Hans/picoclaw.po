@@ -3,7 +3,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 
 msgid "PicoClaw"
-msgstr "PicoClaw AI 网关"
+msgstr "PicoClaw"
 
 msgid "LuCI support for PicoClaw AI Assistant"
 msgstr "PicoClaw AI 助手 LuCI 管理界面"
