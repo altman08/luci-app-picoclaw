@@ -87,6 +87,61 @@ function get_latest_picoclaw_version()
     return latest_ver
 end
 
+-- Manual core installs may have a binary but no procd service script.
+-- Preserve existing scripts supplied by a core package or administrator.
+function ensure_picoclaw_init_script()
+    if nixio.fs.access("/etc/init.d/picoclaw") then
+        if nixio.fs.access("/etc/init.d/picoclaw", "x") then return true end
+        return false, "错误：/etc/init.d/picoclaw 不可执行，请检查权限。"
+    end
+    if sys.call("mkdir -p /etc/init.d") ~= 0 then
+        return false, "错误：无法创建 /etc/init.d。"
+    end
+    local init_content = [[#!/bin/sh /etc/rc.common
+START=99
+STOP=10
+USE_PROCD=1
+start_service() {
+    procd_open_instance picoclaw
+    procd_set_param command /usr/bin/picoclaw gateway
+    procd_set_param env HOME=/root
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param user root
+    procd_close_instance
+}
+# rc.common stop removes the procd instance and its respawn policy.
+service_triggers() {
+    procd_add_reload_trigger "picoclaw"
+}
+]]
+    local inf = io.open("/etc/init.d/picoclaw", "w")
+    if not inf then return false, "错误：无法创建 /etc/init.d/picoclaw。" end
+    local written = inf:write(init_content)
+    local closed = inf:close()
+    if not written or not closed or sys.call("chmod 755 /etc/init.d/picoclaw") ~= 0 then
+        nixio.fs.unlink("/etc/init.d/picoclaw")
+        return false, "错误：无法写入或设置 picoclaw 启动脚本权限。"
+    end
+    return true
+end
+
+function run_picoclaw_service(action)
+    if action ~= "start" and action ~= "restart" then
+        return false, "错误：无效的服务操作。"
+    end
+    if not nixio.fs.access("/usr/bin/picoclaw", "x") then
+        return false, "错误：/usr/bin/picoclaw 不存在或不可执行，请先安装核心程序。"
+    end
+    local ready, err = ensure_picoclaw_init_script()
+    if not ready then return false, err end
+    if sys.call("/etc/init.d/picoclaw " .. action .. " >/dev/null 2>&1") ~= 0 then
+        return false, "启动命令执行失败，请检查 /etc/init.d/picoclaw 和系统日志。"
+    end
+    return true, "已提交启动请求，请在系统日志中确认运行结果。"
+end
+
 -- Install PicoClaw binary from GitHub
 function do_install_picoclaw(arch)
     local version = get_latest_picoclaw_version()
@@ -108,36 +163,9 @@ function do_install_picoclaw(arch)
         return false, "extract_failed"
     end
     sys.exec("chmod +x /usr/bin/picoclaw")
-    -- Install init.d script if not exists
-    if not nixio.fs.access("/etc/init.d/picoclaw") then
-        sys.exec("mkdir -p /etc/init.d")
-        local init_content = [[#!/bin/sh /etc/rc.common
-START=99
-STOP=10
-USE_PROCD=1
-start_service() {
-    procd_open_instance picoclaw
-    procd_set_param command /usr/bin/picoclaw gateway
-    procd_set_param env HOME=/root
-    procd_set_param respawn 3600 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_set_param user root
-    procd_close_instance
-}
-# rc.common stop removes the procd instance and its respawn policy.
-service_triggers() {
-    procd_add_reload_trigger "picoclaw"
-}
-]]
-        local inf = io.open("/etc/init.d/picoclaw", "w")
-        if inf then
-            inf:write(init_content)
-            inf:close()
-            sys.exec("chmod +x /etc/init.d/picoclaw")
-            sys.exec("/etc/init.d/picoclaw enable")
-        end
-    end
+    local had_init = nixio.fs.access("/etc/init.d/picoclaw")
+    local ready = ensure_picoclaw_init_script()
+    if ready and not had_init then sys.call("/etc/init.d/picoclaw enable") end
     -- Create config directory if not exists
     sys.exec("mkdir -p /root/.picoclaw/workspace/skills")
     sys.exec("rm -rf /tmp/picoclaw-install")
@@ -1140,8 +1168,7 @@ function action_do()
     local ok = true
 
     if action == "start" then
-        sys.exec("/etc/init.d/picoclaw start")
-        msg = "服务正在启动..."
+        ok, msg = run_picoclaw_service("start")
     elseif action == "stop" then
         local result = sys.call("/etc/init.d/picoclaw stop >/dev/null 2>&1")
         if result == 0 and not get_status().running then
@@ -1151,8 +1178,7 @@ function action_do()
             ok = false
         end
     elseif action == "restart" then
-        sys.exec("/etc/init.d/picoclaw restart")
-        msg = "服务已重启。"
+        ok, msg = run_picoclaw_service("restart")
     elseif action == "install_picoclaw" then
         local arch, raw_arch = get_picoclaw_arch()
         if not arch then
@@ -1161,8 +1187,8 @@ function action_do()
         else
             local success, result = do_install_picoclaw(arch)
             if success then
-                msg = "PicoClaw v" .. tostring(result) .. " 安装成功！正在启动服务..."
-                sys.exec("/etc/init.d/picoclaw start")
+                ok, msg = run_picoclaw_service("start")
+                msg = "PicoClaw v" .. tostring(result) .. " 安装成功。" .. msg
             elseif result == "download_failed" then
                 msg = "错误：下载失败，请检查网络连接（可能无法访问 GitHub）"
                 ok = false
@@ -1195,8 +1221,8 @@ function action_do()
                     f:close()
                     -- Sync workspace memory files so PicoClaw's AI context reflects the new model
                     sync_workspace_memory(cfg_obj)
-                    sys.exec("/etc/init.d/picoclaw restart")
-                    msg = "配置已保存，服务已重启！"
+                    ok, msg = run_picoclaw_service("restart")
+                    msg = "配置已保存。" .. msg
                 else
                     msg = "错误：无法写入配置文件"
                     ok = false
