@@ -253,14 +253,16 @@ function get_version_info()
     local cur_ver = "N/A"
     local build_time = ""
     local git_commit = ""
-    local output = sys.exec("picoclaw version 2>/dev/null | sed 's/\\x1b\\[[0-9;]*m//g'")
+    local output = sys.exec("NO_COLOR=1 TERM=dumb picoclaw version 2>/dev/null")
     if output and output ~= "" then
-        -- Match: "picoclaw 0.2.6 (git: 5f50ae5)"
-        local v, g = output:match("picoclaw%s+([%d.]+)%s*%(%s*git:%s*([a-f0-9]+)%s*%)")
+        output = output:gsub("\27%[[%d;]*m", "")
+        -- Accept release/nightly versions, with or without a v prefix or commit.
+        local v = output:match("picoclaw%s+v?([%d][%w%.%+%-]*)")
+        local g = output:match("%(git:%s*([a-fA-F0-9]+)%)")
         if v then cur_ver = v end
         if g then git_commit = g end
         -- Match: "Build: 2026-03-25T09:09:15Z"
-        local bt = output:match("Build:%s*([%dT:Z%d%-]+)")
+        local bt = output:match("Build:%s*([%dT:Zz%+%.%-]+)")
         if bt then build_time = bt end
     end
     return cur_ver, build_time, git_commit

@@ -45,9 +45,9 @@ Compared with `master` (`ae324cf`, v1.1.6), `dev` includes:
 - **Chat**: terminal colors, banners and startup output are filtered. Web chat uses an isolated session; clearing removes its displayed history and temporary results, rotates the session and rejects late replies. Archived core sessions remain on disk.
 - **Services**: rc.common/procd manages stopping, fixing the respawn race caused by killing the process directly. Boot autostart uses `enable` / `disable`, without editing PicoClaw JSON; disabling autostart does not stop a running service.
 - **UI**: up to 1200px of content width and 480px text inputs, narrow-screen layouts, dark theme support and native checkboxes. The top icon, title and subtitle have been removed.
-- **Packaging**: `istore/luci-app-picoclaw` is the sole LuCI package source; obsolete `luci/` and `istore/luasrc/` copies were removed and installer paths updated. Core packaging, three-package SDK builds and standalone APKv3 builds are provided.
+- **Packaging**: `istore/luci-app-picoclaw` is the sole LuCI package source; obsolete `luci/` and `istore/luasrc/` copies were removed and installer paths updated. Core and optional launcher packages, SDK builds and standalone APKv3 builds are provided.
 
-The form schema and packaged core have separate version pins: `picoclaw/Makefile` still builds **PicoClaw 0.3.1**. The standalone frontend is **1.1.6-r7**; the SDK LuCI package is **1.1.6-r1**.
+The form schema and packaged core have separate version pins: `picoclaw/Makefile` builds **PicoClaw 0.3.1-r2**. The standalone frontend is **1.1.6-r7**; the SDK LuCI package is **1.1.6-r2**.
 
 ## 📸 Screenshots
 
@@ -81,15 +81,20 @@ The form schema and packaged core have separate version pins: `picoclaw/Makefile
 
 ### GitHub Actions APK builds
 
-Pushing to **dev** triggers `.github/workflows/release-openwrt.yml`. Download packages from the run's **Artifacts** (retained for 14 days). Push builds do not publish a Release.
+Run `.github/workflows/release-openwrt.yml` manually to build and publish packages. Packages are also available from the run's **Artifacts** (retained for 14 days).
 
 For a release, use **Actions → Release OpenWrt packages → Run workflow**, select a branch, enter a tag and choose whether it is a prerelease. The workflow uses OpenWrt 25.12.5 SDKs for `x86_64`, `aarch64_cortex-a53`, `aarch64_cortex-a72`, `aarch64_generic`, `arm_cortex-a7` and `arm_cortex-a9`. Each build produces:
 
 - `picoclaw`: core 0.3.1 binary and procd init script, without a launcher.
+- `picoclaw-launcher`: optional web console with its frontend embedded, depending on `picoclaw`.
 - `luci-app-picoclaw`: LuCI frontend and three preset skills, depending on the core package.
 - `luci-i18n-picoclaw-zh-cn`: Simplified Chinese translations.
 
 Files include SDK and architecture suffixes and SHA256 checksums. Install the three packages matching your firmware together with `apk add --allow-untrusted`.
+
+Install the launcher APK separately if needed. On a router, run `picoclaw-launcher -console -no-browser -public` and open `http://<router-ip>:18800`. The launcher manages the gateway; stop `/etc/init.d/picoclaw` before starting a gateway from the launcher.
+
+`picoclaw version` displays the version, Git commit, build time and Go version. The SDK embeds the same metadata fields as upstream GoReleaser, using `SOURCE_DATE_EPOCH` for a reproducible build timestamp. Building the launcher also requires `node/host`; the recipe downloads pnpm 10.33.0 with SHA256 verification and builds the frontend before compiling the Go backend.
 
 ### Standalone frontend APK
 
@@ -130,7 +135,7 @@ cd /tmp
 wget https://github.com/sipeed/picoclaw/releases/download/v0.2.7/picoclaw_Linux_x86_64.tar.gz
 tar xzf picoclaw_Linux_x86_64.tar.gz
 cp picoclaw /usr/bin/picoclaw && chmod +x /usr/bin/picoclaw
-picoclaw --version   # Should display the version number
+picoclaw version    # Should display the version number
 ```
 
 > ⚠️ The link above is for x86_64. If your router uses ARM (most Xiaomi, TP-Link routers), download the correct binary from [PicoClaw Releases](https://github.com/sipeed/picoclaw/releases).

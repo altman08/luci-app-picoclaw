@@ -45,9 +45,9 @@
 - **网页对话**：过滤终端 ANSI 色码、ASCII 横幅及启动输出；使用独立会话。清空对话会删除网页历史和临时任务结果，并更换会话，避免旧回复重新出现；核心保存的历史会话归档仍保留。
 - **服务管理**：通过 rc.common/procd 停止服务，修复直接杀进程后被 respawn 拉起的问题。开机自启通过 `enable` / `disable` 管理，不修改 PicoClaw JSON 配置；关闭自启不会停止当前服务。
 - **界面**：内容区最大宽度由 960px 调整为 1200px，文字输入框最多 480px，适配窄屏和深色主题；滑块统一改为复选框，移除顶部图标、标题及副标题。
-- **源码与打包**：只保留 `istore/luci-app-picoclaw` 作为 LuCI 包源码，删除 `luci/` 和 `istore/luasrc/` 历史副本，并修正安装脚本引用。新增核心包、SDK 三包流水线和真正的 APKv3 本地打包。
+- **源码与打包**：只保留 `istore/luci-app-picoclaw` 作为 LuCI 包源码，删除 `luci/` 和 `istore/luasrc/` 历史副本，并修正安装脚本引用。提供核心包、可选 launcher 包、SDK 流水线和真正的 APKv3 本地打包。
 
-配置表单对照的新源码版本与 SDK 核心包版本不同：`picoclaw/Makefile` 当前仍固定为 **PicoClaw 0.3.1**。本地独立前端包版本为 **1.1.6-r7**，SDK LuCI 包版本为 **1.1.6-r1**。
+配置表单对照的新源码版本与 SDK 核心包版本不同：`picoclaw/Makefile` 固定为 **PicoClaw 0.3.1-r2**。本地独立前端包版本为 **1.1.6-r7**，SDK LuCI 包版本为 **1.1.6-r2**。
 
 ## 📸 截图
 
@@ -81,8 +81,8 @@
 
 ### GitHub Actions 编译 APK
 
-仓库提供 `.github/workflows/release-openwrt.yml`。推送到 **dev** 分支会自动编译，
-生成的包在该次 Actions 运行的 **Artifacts** 下载，保留 14 天。自动构建不发布 Release。
+仓库提供手动触发的 `.github/workflows/release-openwrt.yml`，用于编译并发布包。
+生成的包也可以在该次 Actions 运行的 **Artifacts** 下载，保留 14 天。
 
 需要发布时，在 GitHub **Actions → Release OpenWrt packages → Run workflow**
 选择分支并填写发布标签，
@@ -90,9 +90,10 @@
 
 流水线使用 OpenWrt 25.12.5 SDK，分别编译 `x86_64`、`aarch64_cortex-a53`、
 `aarch64_cortex-a72`、`aarch64_generic`、`arm_cortex-a7` 和 `arm_cortex-a9`。
-每种架构上传以下三个 APK 和 SHA256 校验文件到 Actions artifacts；手动触发时，全部成功后发布到 GitHub Release：
+每种架构上传以下四个 APK 和 SHA256 校验文件到 Actions artifacts，全部成功后发布到 GitHub Release：
 
 - `picoclaw`：PicoClaw 0.3.1 核心及 procd 服务，不包含 launcher。
+- `picoclaw-launcher`：可选的官方网页控制台，内嵌前端资源，依赖 `picoclaw`。
 - `luci-app-picoclaw`：LuCI 管理界面及三个 OpenWrt 预设技能，依赖 `picoclaw`。
 - `luci-i18n-picoclaw-zh-cn`：LuCI 简体中文语言包。
 
@@ -102,6 +103,13 @@
 ```sh
 apk add --allow-untrusted ./picoclaw-*.apk ./luci-app-picoclaw-*.apk ./luci-i18n-picoclaw-zh-cn-*.apk
 ```
+
+需要官方网页控制台时，额外安装 launcher APK，执行 `picoclaw-launcher -console -no-browser -public`，
+然后访问 `http://<路由器IP>:18800`。launcher 可以管理 gateway；通过它启动 gateway 前，先停止 `/etc/init.d/picoclaw` 服务。
+
+使用 `picoclaw version` 查看版本、Git commit、构建时间和 Go 版本。
+SDK 按官方 GoReleaser 的字段注入构建信息，时间使用 `SOURCE_DATE_EPOCH` 以保持可复现。
+编译 launcher 还需要 `node/host`；配方会下载并校验 pnpm 10.33.0，先构建前端，再编译 Go 后端。
 
 PicoClaw 源码版本与 SHA256 固定在 `picoclaw/Makefile`；升级时必须同时更新版本和校验值。
 LuCI 源码包位于 `istore/luci-app-picoclaw`，中文翻译位于其 `po/zh_Hans` 目录。
@@ -157,7 +165,7 @@ cd /tmp
 wget https://github.com/sipeed/picoclaw/releases/download/v0.2.7/picoclaw_Linux_x86_64.tar.gz
 tar xzf picoclaw_Linux_x86_64.tar.gz
 cp picoclaw /usr/bin/picoclaw && chmod +x /usr/bin/picoclaw
-picoclaw --version   # 确认安装成功，应显示版本号
+picoclaw version     # 确认安装成功，应显示版本号
 ```
 
 > ⚠️ 上面是 x86_64 架构的下载链接。如果你的路由器是 ARM 架构（如大多数小米、TP-Link 路由器），请到 [PicoClaw Releases](https://github.com/sipeed/picoclaw/releases) 下载对应架构的版本。
