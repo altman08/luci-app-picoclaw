@@ -253,7 +253,7 @@ function get_version_info()
     local cur_ver = "N/A"
     local build_time = ""
     local git_commit = ""
-    local output = sys.exec("NO_COLOR=1 TERM=dumb picoclaw version 2>/dev/null")
+    local output = sys.exec("NO_COLOR=1 TERM=dumb HOME=/root /usr/bin/picoclaw version 2>/dev/null")
     if output and output ~= "" then
         output = output:gsub("\27%[[%d;]*m", "")
         -- Accept release/nightly versions, with or without a v prefix or commit.
@@ -531,8 +531,18 @@ local function shell_quote(s)
     return "'" .. s:gsub("'", "'\\''") .. "'"
 end
 
+-- 当前进程 pid，用于隔离并发上传的临时文件
+local function get_self_pid()
+    local f = io.open("/proc/self/stat", "r")
+    if not f then return "0" end
+    local line = f:read("*l") or ""
+    f:close()
+    return line:match("^(%d+)") or "0"
+end
+
 -- Verify path is under expected prefix (prevent traversal/injection)
 local function is_safe_tmp_path(path)
+    if type(path) ~= "string" then return false end
     return path:match("^/tmp/luci%-upload") or path:match("^/tmp/")
 end
 
@@ -594,8 +604,7 @@ function do_upload_install(upload_path)
     sys.exec("chmod +x /usr/bin/picoclaw")
     sys.exec("rm -rf /tmp/picoclaw-update")
     sys.exec("logger -t picoclaw 'Upload install complete, restarting...'")
-    sys.exec("/etc/init.d/picoclaw start 2>/dev/null || (HOME=/root /usr/bin/picoclaw gateway >/dev/null 2>&1 &)")
-    return true, "ok"
+    return run_picoclaw_service("start")
 end
 
 -- Update PicoClaw binary via GitHub Release (auto-detects architecture)
@@ -645,8 +654,7 @@ function do_update()
     sys.exec("chmod +x /usr/bin/picoclaw")
     sys.exec("rm -rf /tmp/picoclaw-update")
     sys.exec("logger -t picoclaw 'Update complete, restarting...'")
-    sys.exec("/etc/init.d/picoclaw start 2>/dev/null || (HOME=/root /usr/bin/picoclaw gateway >/dev/null 2>&1 &)")
-    sys.exec("sleep 3")
+    return run_picoclaw_service("start")
 end
 
 -- Validate CSRF token for POST actions
@@ -872,7 +880,7 @@ function get_picoclaw_tools()
         skills = {}
     }
     -- Cron jobs
-    local cron_out = sys.exec("picoclaw cron list 2>/dev/null | sed 's/\\x1b\\[[0-9;]*m//g' | grep -v 'PicoClaw\\|^$\\|████'")
+    local cron_out = sys.exec("HOME=/root /usr/bin/picoclaw cron list 2>/dev/null | sed 's/\\x1b\\[[0-9;]*m//g' | grep -v 'PicoClaw\\|^$\\|████'")
     if cron_out and cron_out ~= "" and not cron_out:find("No scheduled") then
         for line in cron_out:gmatch("[^\n]+") do
             line = line:match("^%s*(.-)%s*$")
@@ -1163,7 +1171,34 @@ function action_chat_poll()
 end
 
 function action_do()
-    if not check_csrf() then return end
+    -- 必须在 check_csrf() 之前注册文件处理器：
+    -- check_csrf() 内部调用 http.formvalue("token") 会触发 multipart 请求体的惰性解析，
+    -- 此刻若没有 filehandler，上传的文件内容会被直接丢弃。
+    -- 而 http.formvalue() 对 <input type="file"> 返回的是 table 而非路径，
+    -- 旧代码把它传给 is_safe_tmp_path 就会在 path:match 处崩溃。
+    local upload_tmp = "/tmp/picoclaw-upload-" .. get_self_pid() .. ".archive"
+    local upload_received = false
+    local upload_fp
+
+    http.setfilehandler(function(meta, chunk, eof)
+        if not upload_fp and meta and meta.name == "picoclaw_file" then
+            upload_fp = io.open(upload_tmp, "wb")
+        end
+        if upload_fp and chunk then
+            upload_fp:write(chunk)
+            upload_received = true
+        end
+        if upload_fp and eof then
+            upload_fp:close()
+            upload_fp = nil
+        end
+    end)
+
+    if not check_csrf() then
+        if upload_fp then upload_fp:close() upload_fp = nil end
+        os.remove(upload_tmp)
+        return
+    end
 
     local action = http.formvalue("action") or ""
     local msg = ""
@@ -1210,24 +1245,36 @@ function action_do()
         msg = "已关闭开机自动启动。"
     elseif action == "save_config" or action == "save_form_config" then
         local config = http.formvalue("config") or ""
-        if config ~= "" then
+        local previous = http.formvalue("previous_config")
+        if previous and previous:gsub("\r\n", "\n") ~= (get_config() or ""):gsub("\r\n", "\n") then
+            ok, msg = false, "配置已更新，请刷新页面后重试。"
+        elseif config ~= "" then
             -- Validate JSON before saving
             local valid, cfg_obj = pcall(jsonc.parse, config)
             if not valid or type(cfg_obj) ~= "table" or not config:match("^%s*{") then
                 msg = "错误：配置必须是有效的 JSON 对象"
                 ok = false
             else
-                local f = io.open("/root/.picoclaw/config.json", "w")
+                -- Validate a private sibling file before replacing the live config.
+                local candidate = trim(sys.exec("umask 077; mktemp /root/.picoclaw/.config-XXXXXX"))
+                local f = candidate ~= "" and io.open(candidate, "w")
                 if f then
-                    f:write(config)
-                    f:close()
-                    -- Sync workspace memory files so PicoClaw's AI context reflects the new model
-                    sync_workspace_memory(cfg_obj)
-                    ok, msg = run_picoclaw_service("restart")
-                    msg = "配置已保存。" .. msg
+                    local written = f:write(config)
+                    local closed = f:close()
+                    if not written or not closed then
+                        ok, msg = false, "错误：写入配置失败"
+                    elseif is_picoclaw_installed() and sys.call("HOME=/root PICOCLAW_CONFIG=" .. shell_quote(candidate) .. " /usr/bin/picoclaw model >/dev/null 2>&1") ~= 0 then
+                        ok, msg = false, "错误：PicoClaw 无法加载新配置，已保留原配置"
+                    elseif not os.rename(candidate, PC_CONFIG_FILE) then
+                        ok, msg = false, "错误：无法替换配置文件"
+                    else
+                        sync_workspace_memory(cfg_obj)
+                        ok, msg = run_picoclaw_service("restart")
+                        msg = "配置已保存。" .. msg
+                    end
+                    os.remove(candidate)
                 else
-                    msg = "错误：无法写入配置文件"
-                    ok = false
+                    ok, msg = false, "错误：无法创建临时配置文件"
                 end
             end
         else
@@ -1235,16 +1282,18 @@ function action_do()
             ok = false
         end
     elseif action == "update" then
-        do_update()
-        msg = "更新完成，服务已重启！"
+        ok, msg = do_update()
+        msg = ok and "更新完成，已提交启动请求。" or (msg or "更新失败，请检查系统日志。")
     elseif action == "upload_install" then
-        -- LuCI file upload: http.formvalue returns temp path for file inputs
-        local upload_path = http.formvalue("picoclaw_file") or ""
-        if upload_path == "" then
+        -- 文件内容已由上面的 setfilehandler 写入 upload_tmp。
+        -- http.formvalue("picoclaw_file") 对文件字段返回 table，不能再用。
+        if not upload_received then
+            os.remove(upload_tmp)
             msg = "错误：未选择文件"
             ok = false
         else
-            local success, result = do_upload_install(upload_path)
+            local success, result = do_upload_install(upload_tmp)
+            os.remove(upload_tmp)
             if success then
                 msg = "上传安装成功！服务已重启。"
             elseif result == "invalid_path" then
@@ -1263,6 +1312,9 @@ function action_do()
         end
     elseif action == "refresh_logs" then
         -- Just redirect to main page to refresh logs (GET with CSRF already validated)
+        msg = ""
+    elseif action == "refresh_hardware" then
+        -- 重定向回主页，服务端会重新采集硬件信息
         msg = ""
     -- Hardware actions
     elseif action == "led_set" then
@@ -1300,18 +1352,40 @@ function action_do()
         local skill_name = http.formvalue("skill_name") or ""
         if skill_name ~= "" then
             -- Sanitize: only allow alphanumeric, underscore, hyphen
-            if skill_name:match("^[%w_%-]+$") then
-                local skill_path = get_workspace_path() .. "/skills/" .. skill_name
-                rmtree(skill_path)
-                -- Verify deleted
-                local check = io.open(skill_path .. "/SKILL.md", "r")
-                if check then check:close() msg = "错误：删除失败"; ok = false
-                else msg = "技能已删除: " .. skill_name end
+            if skill_name ~= "." and skill_name ~= ".." and skill_name:match("^[%w_%-%.]+$") then
+                local skill_path = skills_dir() .. "/" .. skill_name
+                -- 先走 CLI，能同步 skills store；CLI 说找不到就直接删目录
+                sys.exec("HOME=/root /usr/bin/picoclaw skills remove " .. shell_quote(skill_name) .. " >/dev/null 2>&1")
+                if nixio.fs.access(skill_path .. "/SKILL.md") then
+                    rmtree(skill_path)
+                end
+                prune_skills_store()
+                if nixio.fs.access(skill_path .. "/SKILL.md") then
+                    msg = "错误：删除失败"; ok = false
+                else
+                    msg = "技能已删除: " .. skill_name
+                end
             else
                 msg = "错误：技能名称无效"; ok = false
             end
         else
             msg = "错误：未指定技能"; ok = false
+        end
+    elseif action == "install_preset_one" then
+        local skill_name = trim(http.formvalue("skill_name"))
+        local src = PC_PRESET_DIR .. "/" .. skill_name
+        local dst = skills_dir() .. "/" .. skill_name
+        if skill_name == "." or skill_name == ".." or not skill_name:match("^[%w_%-%.]+$") then
+            msg = "错误：技能名称无效"; ok = false
+        elseif not nixio.fs.access(src .. "/SKILL.md") then
+            msg = "错误：没有这个内置技能"; ok = false
+        else
+            sys.exec("mkdir -p " .. shell_quote(skills_dir()) .. " && cp -r " .. shell_quote(src) .. " " .. shell_quote(skills_dir()) .. "/")
+            if nixio.fs.access(dst .. "/SKILL.md") then
+                msg = "已安装内置技能: " .. skill_name
+            else
+                msg = "错误：复制失败"; ok = false
+            end
         end
     elseif action == "import_skill" then
         local skill_name = http.formvalue("skill_name") or ""
@@ -1366,6 +1440,180 @@ function action_do()
         else
             msg = "未找到预设技能（可能未安装 luci-app-picoclaw 的完整包）"; ok = false
         end
+    -- ===== 定时任务 =====
+    elseif action == "cron_add" then
+        local name = trim(http.formvalue("job_name"))
+        local mode = http.formvalue("sched_mode") or "every"
+        local every = tonumber(http.formvalue("every_sec") or "") or 0
+        local expr = trim(http.formvalue("cron_expr"))
+        local message = trim(http.formvalue("job_message"))
+        local channel = trim(http.formvalue("job_channel"))
+        local to = trim(http.formvalue("job_to"))
+        if name == "" or message == "" then
+            msg = "错误：任务名称和消息不能为空"; ok = false
+        elseif not name:match("^[%w_%-%.%s]+$") then
+            msg = "错误：任务名称只能包含字母、数字、空格、下划线、连字符和点"; ok = false
+        elseif mode == "cron" and select(2, expr:gsub("%S+", "")) ~= 5 then
+            msg = "错误：cron 表达式需要 5 个字段（分 时 日 月 周）"; ok = false
+        elseif mode == "every" and (every < 10 or every > 2592000) then
+            msg = "错误：间隔需在 10 秒到 30 天之间"; ok = false
+        else
+            local cmd = "HOME=/root /usr/bin/picoclaw cron add --name " .. shell_quote(name)
+                    .. " --message " .. shell_quote(message)
+            if mode == "cron" then
+                cmd = cmd .. " --cron " .. shell_quote(expr)
+            else
+                cmd = cmd .. " --every " .. tostring(math.floor(every))
+            end
+            if channel ~= "" then cmd = cmd .. " --channel " .. shell_quote(channel) end
+            if to ~= "" then cmd = cmd .. " --to " .. shell_quote(to) end
+            local out = sys.exec(cmd .. " 2>&1")
+            if strip_ansi(out):find("✓", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "定时任务「" .. name .. "」已添加。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
+    elseif action == "cron_toggle" then
+        local id = trim(http.formvalue("job_id"))
+        local want = (http.formvalue("want") == "1")
+        if not id:match("^[%w]+$") then
+            msg = "错误：任务 ID 无效"; ok = false
+        else
+            local out = sys.exec("HOME=/root /usr/bin/picoclaw cron " .. (want and "enable" or "disable") .. " " .. id .. " 2>&1")
+            if strip_ansi(out):find("✓", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = (want and "任务已启用" or "任务已禁用") .. "。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
+    elseif action == "cron_delete" then
+        local id = trim(http.formvalue("job_id"))
+        if not id:match("^[%w]+$") then
+            msg = "错误：任务 ID 无效"; ok = false
+        else
+            local out = sys.exec("HOME=/root /usr/bin/picoclaw cron remove " .. id .. " 2>&1")
+            if strip_ansi(out):find("✓", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "任务已删除。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
+    -- ===== MCP 服务器 =====
+    elseif action == "mcp_add" then
+        local name = trim(http.formvalue("mcp_name"))
+        local transport = http.formvalue("mcp_transport") or "stdio"
+        local target = trim(http.formvalue("mcp_target"))
+        local arg_txt = trim(http.formvalue("mcp_args"))
+        local env_txt = http.formvalue("mcp_env") or ""
+        local hdr_txt = http.formvalue("mcp_headers") or ""
+        local deferred = (http.formvalue("mcp_deferred") == "1")
+        if not name:match("^[%w_%-%.]+$") then
+            msg = "错误：名称只能包含字母、数字、下划线、连字符和点"; ok = false
+        elseif target == "" then
+            msg = "错误：请填写命令或 URL"; ok = false
+        elseif transport ~= "stdio" and not target:match("^https?://") then
+            msg = "错误：http/sse 传输需要 http(s):// 开头的 URL"; ok = false
+        else
+            local cmd = "HOME=/root /usr/bin/picoclaw mcp add " .. shell_quote(name) .. " " .. shell_quote(target)
+            if transport == "stdio" then
+                for a in arg_txt:gmatch("%S+") do
+                    cmd = cmd .. " " .. shell_quote(a)
+                end
+                for line in env_txt:gmatch("[^\n]+") do
+                    line = trim(line)
+                    if line:match("^[%w_]+=") then cmd = cmd .. " -e " .. shell_quote(line) end
+                end
+                if deferred then cmd = cmd .. " --deferred" end
+            else
+                cmd = cmd .. " -t " .. shell_quote(transport)
+                for line in hdr_txt:gmatch("[^\n]+") do
+                    line = trim(line)
+                    if line:find(":", 1, true) or line:find("=", 1, true) then
+                        cmd = cmd .. " -H " .. shell_quote(line)
+                    end
+                end
+            end
+            local out = sys.exec(cmd .. " --force 2>&1")
+            if strip_ansi(out):find("✓", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "MCP 服务器「" .. name .. "」已保存。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
+    elseif action == "mcp_delete" then
+        local name = trim(http.formvalue("mcp_name"))
+        if not name:match("^[%w_%-%.]+$") then
+            msg = "错误：名称无效"; ok = false
+        else
+            local out = sys.exec("HOME=/root /usr/bin/picoclaw mcp remove " .. shell_quote(name) .. " 2>&1")
+            if strip_ansi(out):find("✓", 1, true) or strip_ansi(out):find("removed", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "MCP 服务器「" .. name .. "」已删除。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
+    -- ===== 技能 =====
+    elseif action == "skill_install" then
+        local spec = trim(http.formvalue("skill_spec"))
+        local registry = trim(http.formvalue("skill_registry"))
+        if spec == "" or not spec:match("^[%w_%-%./:]+$") then
+            msg = "错误：请填写 作者/仓库/技能 或注册表中的 slug（只允许字母数字和 . _ - / :）"; ok = false
+        else
+            local cmd = "timeout 45 env HOME=/root /usr/bin/picoclaw skills install "
+            if registry ~= "" then cmd = cmd .. "--registry " .. shell_quote(registry) .. " " end
+            local out = sys.exec(cmd .. shell_quote(spec) .. " 2>&1")
+            local has_dir = nixio.fs.access(skills_dir() .. "/" .. (spec:match("([^/]+)$") or spec) .. "/SKILL.md")
+            if strip_ansi(out):find("✓", 1, true) or has_dir then
+                msg = "技能「" .. spec .. "」安装完成"
+            else
+                msg = "错误：" .. (last_line(out) ~= "" and last_line(out) or "安装失败（可能无法访问 GitHub / clawhub）"); ok = false
+            end
+        end
+    -- ===== 模型 =====
+    elseif action == "model_set_default" then
+        local name = trim(http.formvalue("model_name"))
+        if not name:match("^[%w_%-%.]+$") then
+            msg = "错误：模型名无效"; ok = false
+        else
+            local out = sys.exec("HOME=/root /usr/bin/picoclaw model " .. shell_quote(name) .. " 2>&1")
+            local line = last_line(out)
+            if strip_ansi(out):find("default", 1, true) or strip_ansi(out):find("✓", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "默认模型已切换为 " .. name .. "。" .. msg
+            else
+                msg = "错误：" .. line; ok = false
+            end
+        end
+    elseif action == "model_add" then
+        local name = trim(http.formvalue("new_model_name"))
+        local base = trim(http.formvalue("new_model_base"))
+        local key = trim(http.formvalue("new_model_key"))
+        local mid = trim(http.formvalue("new_model_id"))
+        if not name:match("^[%w_%-%.]+$") then
+            msg = "错误：别名只能包含字母、数字、下划线、连字符和点"; ok = false
+        elseif base == "" or key == "" or mid == "" then
+            msg = "错误：API Base、API Key、模型 ID 都要填"; ok = false
+        elseif not base:match("^https?://") then
+            msg = "错误：API Base 需要 http(s):// 开头"; ok = false
+        else
+            local cmd = "HOME=/root /usr/bin/picoclaw model add -b " .. shell_quote(base)
+                    .. " -k " .. shell_quote(key)
+                    .. " -m " .. shell_quote(mid)
+                    .. " -n " .. shell_quote(name) .. " 2>&1"
+            local out = sys.exec(cmd)
+            if strip_ansi(out):find("✓", 1, true) or strip_ansi(out):find("Saved", 1, true) then
+                ok, msg = run_picoclaw_service("restart")
+                msg = "模型「" .. name .. "」已添加并设为默认。" .. msg
+            else
+                msg = "错误：" .. last_line(out); ok = false
+            end
+        end
     end
 
     local url = dispatcher.build_url("admin", "services", "picoclaw")
@@ -1373,6 +1621,286 @@ function action_do()
         url = url .. "?msg=" .. http.urlencode(msg) .. "&ok=" .. (ok and "1" or "0")
     end
     http.redirect(url)
+end
+
+-- ============================================================
+-- v0.3.1 新增管理页：定时任务 / MCP / 技能 / 模型与认证
+-- 数据源全部直接读文件（比每次起 picoclaw 快），写操作走 CLI
+-- ============================================================
+PC_CONFIG_FILE = "/root/.picoclaw/config.json"
+
+function skills_dir()
+    return get_workspace_path() .. "/skills"
+end
+PC_PRESET_DIR = "/usr/lib/lua/luci/picoclaw-skills"
+PC_SEC_FILE = "/root/.picoclaw/.security.yml"
+
+function trim(s)
+    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- 去掉 ANSI 颜色与控制字符
+function strip_ansi(s)
+    return (tostring(s or ""):gsub("\27%[[%d;]*m", ""))
+end
+
+-- 取输出里最后一行有内容的文本（给错误提示用）
+function last_line(s)
+    local last = ""
+    for line in strip_ansi(s):gmatch("[^\n]+") do
+        line = trim(line)
+        if line ~= "" then last = line end
+    end
+    return last
+end
+
+local function fmt_ts(ms)
+    local n = tonumber(ms)
+    if not n or n <= 0 then return "-" end
+    return os.date("%m-%d %H:%M", math.floor(n / 1000))
+end
+
+function get_cron_jobs_info()
+    local jobs = {}
+    local data = parse_json_file(get_workspace_path() .. "/cron/jobs.json")
+    if not data or type(data.jobs) ~= "table" then return jobs end
+    for _, j in ipairs(data.jobs) do
+        if type(j) == "table" then
+            local sched = j.schedule or {}
+            local sched_txt = tostring(sched.kind or "?")
+            if sched.kind == "every" then
+                sched_txt = string.format("every %ds", math.floor((tonumber(sched.everyMs) or 0) / 1000))
+            elseif sched.kind == "cron" then
+                sched_txt = "cron " .. tostring(sched.expr or "")
+            end
+            local payload = j.payload or {}
+            jobs[#jobs + 1] = {
+                id = html_escape(tostring(j.id or "")),
+                name = html_escape(tostring(j.name or "")),
+                enabled = (j.enabled == true),
+                sched = html_escape(sched_txt),
+                message = html_escape(tostring(payload.message or "")),
+                channel = html_escape(tostring(payload.channel or "")),
+                to = html_escape(tostring(payload.to or "")),
+                next_run = fmt_ts(j.state and j.state.nextRunAtMs)
+            }
+        end
+    end
+    return jobs
+end
+
+function get_mcp_servers_info()
+    local out = {}
+    local cfg = parse_json_file(PC_CONFIG_FILE)
+    local servers = cfg and cfg.tools and cfg.tools.mcp and cfg.tools.mcp.servers
+    if type(servers) ~= "table" then return out end
+    for name, s in pairs(servers) do
+        if type(s) == "table" then
+            local target = tostring(s.url or "")
+            if target == "" then
+                target = tostring(s.command or "")
+                if type(s.args) == "table" and #s.args > 0 then
+                    local args = {}
+                    for _, a in ipairs(s.args) do args[#args + 1] = tostring(a) end
+                    target = target .. " " .. table.concat(args, " ")
+                end
+            end
+            local nenv, nheader = 0, 0
+            if type(s.env) == "table" then for _ in pairs(s.env) do nenv = nenv + 1 end end
+            if type(s.headers) == "table" then for _ in pairs(s.headers) do nheader = nheader + 1 end end
+            out[#out + 1] = {
+                name = html_escape(tostring(name)),
+                type = html_escape(tostring(s.type or "stdio")),
+                target = html_escape(target),
+                enabled = (s.enabled == true),
+                env = nenv,
+                headers = nheader,
+                deferred = (s.deferred == true)
+            }
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- 读 SKILL.md 的 frontmatter，只取需要的三个字段
+local function read_skill_meta(dir)
+    local name, desc = "", ""
+    local f = io.open(dir .. "/SKILL.md", "r")
+    if f then
+        local content = f:read("*a")
+        f:close()
+        local head = content:match("^%-%-%-\n(.-)\n%-%-%-") or ""
+        name = head:match("\nname:%s*\"(.-)\"") or head:match("^name:%s*\"(.-)\"")
+            or head:match("\nname:%s*([^\n]+)") or head:match("^name:%s*([^\n]+)") or ""
+        desc = head:match("\ndescription:%s*\"(.-)\"") or head:match("^description:%s*\"(.-)\"")
+            or head:match("\ndescription:%s*([^\n]+)") or head:match("^description:%s*([^\n]+)") or ""
+        name = trim(name)
+        desc = trim(desc)
+        if #desc > 160 then desc = desc:sub(1, 160) .. "..." end
+    end
+    local ver = ""
+    local mf = parse_json_file(dir .. "/_meta.json")
+    if mf and mf.version then ver = tostring(mf.version) end
+    return name, desc, ver
+end
+
+-- 删掉 skills store 里目录已经不存在的条目（CLI 的 remove 对已消失的目录会报 not found）
+function prune_skills_store()
+    local store = skills_dir() .. "/.skills_store_lock.json"
+    local data = parse_json_file(store)
+    if not data or type(data.skills) ~= "table" then return end
+    local changed = false
+    for name in pairs(data.skills) do
+        if not nixio.fs.access(skills_dir() .. "/" .. name .. "/SKILL.md") then
+            data.skills[name] = nil
+            changed = true
+        end
+    end
+    if changed then
+        local ok, out = pcall(jsonc.stringify, data)
+        if ok and out then
+            local f = io.open(store, "w")
+            if f then f:write(out) f:close() end
+        end
+    end
+end
+
+function get_skills_info()
+    local out = {}
+    local listed = io.popen("ls " .. shell_quote(skills_dir()) .. " 2>/dev/null")
+    if listed then
+        for entry in listed:lines() do
+            entry = trim(entry)
+            if entry ~= "" and entry:match("^[%w_%-%.]+$") then
+                local name, desc, ver = read_skill_meta(skills_dir() .. "/" .. entry)
+                out[#out + 1] = {
+                    dir = html_escape(entry),
+                    name = html_escape(name ~= "" and name or entry),
+                    description = html_escape(desc),
+                    version = html_escape(ver),
+                    builtin = false
+                }
+            end
+        end
+        listed:close()
+    end
+    -- 包内自带的预设技能（可通过“安装预设”复制到 workspace）
+    local presets = io.popen("ls " .. PC_PRESET_DIR .. " 2>/dev/null")
+    if presets then
+        for entry in presets:lines() do
+            entry = trim(entry)
+            if entry ~= "" and entry:match("^[%w_%-%.]+$")
+               and nixio.fs.access(PC_PRESET_DIR .. "/" .. entry .. "/SKILL.md") then
+                local name, desc = read_skill_meta(PC_PRESET_DIR .. "/" .. entry)
+                out[#out + 1] = {
+                    dir = html_escape(entry),
+                    name = html_escape(name ~= "" and name or entry),
+                    description = html_escape(desc),
+                    version = "",
+                    builtin = true
+                }
+            end
+        end
+        presets:close()
+    end
+    table.sort(out, function(a, b)
+        if a.builtin ~= b.builtin then return not a.builtin end
+        return a.dir < b.dir
+    end)
+    return out
+end
+
+-- 从 .security.yml 里统计每个模型配了几个 api_keys（只数条数，不取值）
+-- 注意：文件里条目的写法可能是 "  glm-4.5-air:0:" 这种非标准形式，不能按行尾匹配
+function get_security_model_keys()
+    local res = {}
+    local f = io.open(PC_SEC_FILE, "r")
+    if not f then return res end
+    local in_models, cur, in_keys = false, nil, false
+    for line in f:lines() do
+        local top = line:match("^(%S[^:]*):")
+        if top then
+            in_models = (top == "model_list")
+            cur, in_keys = nil, false
+        elseif in_models then
+            local ind, key = line:match("^( +)([%w_%._%-]+):")
+            if ind and #ind == 2 then
+                cur, in_keys = key, false
+                res[cur] = res[cur] or 0
+            elseif line:match("^ +api_keys:%s*$") then
+                in_keys = true
+            elseif in_keys and cur and line:match("^ +%-") then
+                res[cur] = (res[cur] or 0) + 1
+            end
+        end
+    end
+    f:close()
+    return res
+end
+
+function get_models_info()
+    local info = { list = {}, default_name = "", provider = "", max_tokens = "" }
+    local cfg = parse_json_file(PC_CONFIG_FILE)
+    if not cfg then return info end
+    local defaults = (cfg.agents and cfg.agents.defaults) or {}
+    info.default_name = tostring(defaults.model_name or "")
+    info.provider = tostring(defaults.provider or "")
+    info.max_tokens = tostring(defaults.max_tokens or "")
+    info.default_base = ""
+    info.default_thinking = ""
+    local keys = get_security_model_keys()
+    if type(cfg.model_list) == "table" then
+        for index, m in ipairs(cfg.model_list) do
+            if type(m) == "table" then
+                local mn = tostring(m.model_name or "")
+                if mn == info.default_name then
+                    info.default_base = html_escape(tostring(m.api_base or ""))
+                    info.default_thinking = html_escape(tostring(m.thinking_level or ""))
+                end
+                info.list[#info.list + 1] = {
+                    index = index,
+                    name = html_escape(mn),
+                    model = html_escape(tostring(m.model or "")),
+                    base = html_escape(tostring(m.api_base or "")),
+                    enabled = (m.enabled == true),
+                    has_key = ((keys[mn] or 0) > 0),
+                    key_count = (keys[mn] or 0),
+                    thinking = tostring(m.thinking_level or ""),
+                    is_default = (mn == info.default_name)
+                }
+            end
+        end
+    end
+    return info
+end
+
+-- auth 状态要起一次二进制，缓存 60 秒
+function get_auth_summary()
+    local cache = "/tmp/picoclaw_auth_cache.txt"
+    local st = nixio.fs.stat(cache)
+    if st and st.mtime and (os.time() - st.mtime) < 60 then
+        local f = io.open(cache, "r")
+        if f then
+            local t = f:read("*a")
+            f:close()
+            return t
+        end
+    end
+    local raw = sys.exec("HOME=/root /usr/bin/picoclaw auth status 2>&1")
+    local keep = {}
+    for line in strip_ansi(raw):gmatch("[^\n]+") do
+        local bad = false
+        for _, ch in ipairs({ "█", "╔", "╚", "║", "╗", "╝", "🦞" }) do
+            if line:find(ch, 1, true) then bad = true break end
+        end
+        line = trim(line)
+        if not bad and line ~= "" then keep[#keep + 1] = line end
+    end
+    local text = table.concat(keep, "\n")
+    local f = io.open(cache, "w")
+    if f then f:write(text) f:close() end
+    return text
 end
 
 function action_main()
@@ -1467,6 +1995,17 @@ function action_main()
         end
     end
 
+    -- v0.3.1 新增页面数据
+    local cron_jobs = get_cron_jobs_info()
+    local mcp_servers = get_mcp_servers_info()
+    local skills_list = get_skills_info()
+    local skills_installed, skills_preset = 0, 0
+    for _, sk in ipairs(skills_list) do
+        if sk.builtin then skills_preset = skills_preset + 1 else skills_installed = skills_installed + 1 end
+    end
+    local models_info = get_models_info()
+    local auth_summary = get_auth_summary()
+
     luci.template.render("picoclaw/main", {
         running = status.running,
         pid = pid_str,
@@ -1503,6 +2042,17 @@ function action_main()
         picoclaw_installed = picoclaw_installed,
         picoclaw_arch = html_escape(picoclaw_arch or ""),
         picoclaw_raw_arch = html_escape(picoclaw_raw_arch or ""),
-        picoclaw_arch_supported = picoclaw_arch_supported
+        picoclaw_arch_supported = picoclaw_arch_supported,
+        cron_jobs = cron_jobs,
+        mcp_servers = mcp_servers,
+        skills_list = skills_list,
+        skills_installed = skills_installed,
+        skills_preset = skills_preset,
+        models_info = models_info,
+        default_model_name = js_escape(models_info.default_name or ""),
+        default_model_base = models_info.default_base or "",
+        default_model_thinking = models_info.default_thinking or "",
+        max_tokens_now = html_escape(models_info.max_tokens ~= "" and models_info.max_tokens or "-"),
+        auth_summary = html_escape(auth_summary)
     })
 end

@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-11-21
+
+### Added
+- **iStore 应用注册** — 按 `istoreos-app-hub/docs/architecture/linkease-app-registration.md`，插件包持有注册清单 `/usr/share/picoclaw/picoclaw-plugin.json`、桌面图标 `/usr/share/picoclaw/www/logo.png`，标准入口 `/usr/share/linkease/apps.d/40-picoclaw.json` 是指向设备绝对路径的软链接；postinst 自动维护旧目录 `/usr/share/linkeasefull/desktop-apps.d` 兼容入口，prerm 只清理仍指向自己的链接
+- **iStore 自动配置** — app-meta 的 `config.sh` 改为自包含脚本；插件包提供 `/usr/libexec/istorec/picoclaw.sh`（install/start/stop/restart/status/port/rm）供 iStore 调用
+
+### Fixed
+- **本地上传安装崩溃** — `action_do()` 在 `check_csrf()` 之前没有注册文件处理器，而 `check_csrf()` 内部调用 `http.formvalue("token")` 会触发 multipart 请求体解析，导致上传内容被丢弃；随后 `http.formvalue("picoclaw_file")` 对文件字段返回 table 而非路径，传入 `is_safe_tmp_path` 后 `path:match` 崩溃（`attempt to call method 'match' (a nil value)`）。现在在 `check_csrf()` 之前注册 `setfilehandler`，把内容流式写入 `/tmp/picoclaw-upload-<pid>.archive`，安装后清理；`is_safe_tmp_path` 增加类型守卫
+- **对话面板标题显示成 `chat_title`** — `<h3>` 上多余的 `data-i18n="chat_title"` 指向不存在的键，i18n 兜底返回键名并整体覆盖标题，图标与内部 `<span>` 一起丢失；移除该属性
+- **刷新硬件状态无效** — 按钮是 `<a href>` GET 请求，不带 CSRF token，`check_csrf()` 直接返回 403；改为 POST 表单携带 token，并补上 `refresh_hardware` 动作分支
+
+### Changed
+- controller 与 `main.htm` 的三处副本（`luci/`、`istore/luasrc/`、`istore/luci-app-picoclaw/luasrc/`）保持完全一致
+
+---
+
+## [1.2.0] - 2026-11-15
+
+### Added
+- **定时任务页** — 列出 / 新建 / 启用 / 禁用 / 删除 `workspace/cron/jobs.json` 里的任务，支持固定间隔与 cron 表达式，可指定投递通道与收件人
+- **MCP 服务页** — 增删 MCP 服务器，stdio 支持启动参数与环境变量，http / sse 支持请求头，可标记延迟加载
+- **技能页** — 技能卡片（名称 / 版本 / 描述）、内置技能标记、从注册表安装、粘贴导入、删除；原硬件页的技能入口迁移至此
+- **模型与认证页** — `model_list` 列表、切换默认模型、启用停用、新增模型、API Key 配置状态（只显示有无与条数）、`picoclaw auth status` 只读展示
+- **推理强度设置** — 模型条目支持 `thinking_level`（low / medium / high / max / adaptive），每行一个下拉，写入后自动重启
+- **APK (v3/ADB) 构建脚本** `scripts/build-apk-v3.sh` — 在 OpenWrt 25.x 路由器上直接用系统 `apk mkpkg` 产出 v3 包，内置隐私扫描与 CRLF 检查；旧的 `build-apk-25xx.sh`（v2 格式，25.x 装不上）已标注废弃
+- 标签栏支持换行，面板切换增加淡入位移动画
+
+### Fixed
+- **CLI 读错配置目录** — LuCI 进程 CWD 为 `/www` 且未设置 `HOME`，直接调用 `picoclaw` 会让 CLI 在错误位置读写配置，导致新建定时任务 / 改模型全部无效；现在所有调用统一前缀 `HOME=/root /usr/bin/picoclaw`
+- **硬件页定时任务列表恒为空** — 同上原因，`picoclaw cron list` 读到了不存在的配置目录
+- **配置编辑表单会写坏配置** — `steering_mode` / `media_cleanup.enabled` 少了 `agents.defaults.` / `tools.` 前缀，`listen`、`providers.*` 在 0.3.1 里已不存在；表单保存会往顶层写未知字段，严格校验下 PicoClaw 直接拒绝加载
+- **保存配置加校验与回滚** — 写盘前备份，写后跑 `picoclaw model` 试解析，遇到 unknown field 自动回滚并提示具体字段
+- **模型指南与示例适配 0.3.1** — provider 列改为真实取值（zhipu / moonshot / openrouter…），新增 23 项 provider 矩阵，示例改成 0.3.1 实际字段，补上「max_tokens 只能写在 agents.defaults」警告，删掉已移除的 `picoclaw config security`
+- **模型清单更新到 2026-11** — DeepSeek V4.1 Flash / Claude Fable 5.2 / Sonnet 5.5 / GPT-5.5 / Gemini 4 Carbon / GLM-5.3 / Kimi K3 / Qwen3.8 Max 等 16 条，上下文按厂商口径显示；默认模型改为按当前配置动态高亮
+- **内置预设技能目录是空的** — 三个 `openwrt-*` 目录只建了目录没装 `SKILL.md`，点「预设技能」或安装都没反应
+- **预设技能 frontmatter 缺开头的 `---`** — 即使装上也没有 name/description，PicoClaw 无法识别
+- **删除技能不消失** — 原实现只 `rmtree` 目录，不走 CLI，`skills store` 里的记录残留；现在先 `picoclaw skills remove`，再兜底删目录，并自动清理指向已消失目录的 store 条目
+- 删除确认弹窗删的是列表最后一项（按钮 selectors 取错了目标），已按卡片定位
+- BusyBox 下 `cp -r src/. dst/` 不生效，改成 `cp -r src skills_dir/`
+- `gateway_port` 指标缺少中英文文案
+
+### Changed
+- 硬件页的「已安装技能」「定时任务」卡片改为一行入口，指向新的独立标签页
+- 定时任务与配置类修改保存后重启服务（网关不监听 jobs.json / config 变化，实测进程内不重载）
+- 配置编辑的 providers 区块改为指向「模型与认证」的提示（0.3.1 用 model_list 管模型）
+- 技能页拆成「已安装」与「可安装的内置技能」两组，内置技能卡片新增单个「安装」按钮（`install_preset_one`）
+- README 五种语言补充 APK 安装方式（`apk add --allow-untrusted`）并把 IPK 版本号更新到 1.2.0
+
+### Packaging
+- IPK：`luci-app-picoclaw_1.2.0-1_all.ipk`（tar.gz 三层嵌套，非 AR 格式）
+- APK：`luci-app-picoclaw-1.2.0-r1.apk`（v3/ADB 格式，未签名，需 `--allow-untrusted`）
+- 两者均包含 3 个内置技能的 `SKILL.md`（此前 IPK 里只有空目录）
+- 打包脚本内置隐私扫描：命中 `sk-` 密钥、硬编码凭据或本机路径即中止，不写盘
+
 ## [1.1.6] - 2026-04-28
 
 ### Added

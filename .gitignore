@@ -9,3 +9,4 @@ Thumbs.db
 release/
 istore/openwrt-app-actions/
 artifacts/
+dist/

@@ -15,7 +15,7 @@ set -eu
 umask 022
 
 PKG_NAME="luci-app-picoclaw"
-PKG_VERSION="${PKG_VERSION:-1.1.6-r7}"
+PKG_VERSION="${PKG_VERSION:-1.2.1-r1}"
 PKG_DESC="LuCI management interface for PicoClaw AI assistant"
 PKG_MAINTAINER="GennKann"
 APK="${APK:-apk}"
